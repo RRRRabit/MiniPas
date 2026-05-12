@@ -1,0 +1,258 @@
+9.2    目标代码生成算法设计
+【例9.6】单寄存器(R)下表达式目标代码生成示例：
+    ※人工翻译目标代码：               ①LD R,a
+      ⑴(+ a(y) b(y) t1(y))   ②ADD R,b
+      ⑵(- c(y) d(y) t2(y))   ③ST R,t1
+                             ④LD R,c
+      ⑶(* t1(y)t2(n)t3(y))   ⑤SUB R,d
+      ⑷(- a(y) t3(n)t4(y))   ⑥MUL R,t1
+                             ⑦ ST R,t3
+                             ⑧LD R,a
+      ⑸(/ t1(n) 2 t5(y))     ⑨SUB R,t3
+                             ⑩ST R,t
+      ⑹(+ t4(n)t5(n) x(y))   11 LD R,t1
+       …                     12 DIV R,2
+注                            13 ADD R,t4
+    需要随时观察寄存器状态 ！
+【例9.7】单寄存器(R)下,条件语句目标代码生成示例：
+
+如：if(a>b)x=(a+b)*c;
+  else x=5-a*b;                          待返
+                             ①LD R,a
+ 划分基本块                       ②GT R,b     填1
+                             ③FJ R,？ ⑨
+  ⑴(> a(y) b(y) t1(y))   ※   ④LD R,a
+  ⑵(if t1(n) _ _ )           ⑤ADD R,b
+                         人               待返
+  ⑶(+ a(y) b(y) t2(y))       ⑥MUL R,c
+                         工   ⑦ST R,x      填2
+  ⑷(* t2(n) c(y) x(y))   翻   ⑧JMP_,？ 15
+  ⑸(el _ _ _ )           译   ⑨ LD R,a
+  ⑹(* a(y) b(y) t3(y))   过   ⑩MUL R,b 返填
+  ⑺(- 5 t3(n) x(y))      程   11 ST R,t3 时机1
+                             12 LD R,5
+                             13 SUB R,t3 返填
+  ⑻(ie _ _ _ )
+                             14 ST R,x   时机
+注    …
+  需要及时处理跳转地址返填 ！             15          2
+9.2.1   目标代码生成要点和生成环境
+生成要点
+ ⒈   目标代码生成是在一个基本块上进行的：
+  ⑴ 入口:寄存器空闲； ⑵ 出口:释放寄存器。
+ ⒉ 目标代码生成是以四元式为对象的：
+  ⑴ 表达式、赋值四元式；首先对结果变量申请寄存器；
+        然后编目标指令；并修改描述表。
+  ⑵ 转向四元式；首先保存占用寄存器的活跃变量值；
+          然后再编跳转指令（不完备！）；
+          同时记住待返填地址！
+ 注
+     【释放寄存器】编存储指令,保存占有寄存器的活
+  跃变量值；通常发生在如下两个时刻：
+      ⑴ 为结果变量申请寄存器时；
+      ⑵ 基本块出口时；
+生成环境
+
+v 虚拟机：单一寄存器 R ; 指令形式 p:(op R,M )
+   含义：   R:= (R)op(M) 或   R:= op(M)
+                                      变量内
+v 表、区和栈：                              存地址
+ • QT[q] … 四元式区(附有变量的活跃信息)；
+ • OBJ[p] … 目标代码区；
+ • SEM[m] … 语义栈（登记待返填的目标地址）；
+ • SYMBL[i] … 符号表； • RDL[R] … 寄存器描述表；
+   RDL== 0 (R空闲) ； RDL== X (R被X占用)；
+
+ v 变量和函数：
+§ CODE(op R,M;…)…(送代码函数)把目标代码送目标区；
+§ BACK(pi,pk)…(返填函数)把地址 pk 返填到地址 pi中；
+9.2.2 表达式四元式目标代码生成算法：
+
+• 设当前扫描的四元式 q:( B C A)             算符对应
+ ⑴ 为 A 预分配寄存器，编目标：                  的操作码
+  ① 若 RDL==0 则 CODE( LD R,B ； R,C );
+  ② 若 RDL==B 则
+      若 B(y) 则 CODE( ST R,B ； R,C );
+      否则 CODE(  R,C );
+  ③ 若 RDL==C 且  可交换 则
+      若 C(y) 则 CODE( ST R,C ； R,B );
+      否则 CODE(  R,B );
+  ④ 若 RDL==D（上述三种情况之外 ） 则
+     若 D(y) 则 CODE( ST R,D ; LD R,B ;  R,C );
+     否则 CODE( LD R,B ;  R,C );
+ ⑵ 变量 A 登录到描述表中： RDL:= A ;
+9.2.3    赋值四元式目标代码生成算法：
+
+        • 设当前四元式       q:(= B _ A)
+  ⑴ 为 A 预分配寄存器，编目标：
+    ① 若 RDL==0 则 CODE( LD R,B );
+    ② 若 RDL==B 则
+          若 B(y) 则 CODE( ST R,B );
+    ③ 若 RDL==D（D!=B,D!=A ）   则
+        若 D(y) 则 CODE( ST R,D ; LD R,B );
+             否则 CODE( LD R,B );
+  ⑵ 变量 A 登录到描述表中： RDL:= A ;
+9.2.4    条件语句四元式目标代码生成算法：
+
+【例9.7】 if(a>b)x=(a+b)*c;else x=5-a*b;
+
+    ※ 计算机目标代码生成过程示例：
+B     QUAT[q]                  OBJ[p]       RDL SEM
+    ⑴(> a(y) b(y) t1(y)) ①LD R,a ②GT R,b    t1
+    ⑵(if t1(n) _ _ ) ③FJ R,? ⑨                   ③
+    ⑶(+ a(y) b(y) t2(y)) ④LD R,a ⑤ADD R,b t2
+    ⑷(* t2(n) c(y) x(y)) ⑥MUL R,c            x
+    ⑸(el _ _ _ ) ⑦ST R,x ⑧JMP_,? 15              ⑧
+    ⑹(* a(y) b(y) t3(y)) ⑨LD R,a ⑩MUL R,b   t3
+    ⑺(- 5 t3(y) x(y)) 11 ST R,t3 12 LD R,5   x
+                         13 SUB R,t3   实践中，先返
+    ⑻(ie _ _ _ ) 14 ST R,x             填，后编跳转
+       …                 15               指令！
+(接前页)
+
+※ 算法设计：                  条件语句的四元式结构
+
+ ㈠ 设当前四元式 q:(if B _ _ )
+⑴ 若 RDL==0 则 CODE( LD R,B ; FJ R,_ ); PUSH(p)；
+⑵ 若 RDL==B 则
+   ① 若 B(y) 则 CODE( ST R,B ; FJ   R,_ );
+           否则 CODE( FJ   R,_ );
+   ② PUSH(p)；RDL:=0;
+⑶ 若 RDL==D（D!=B） 则
+  ① 若 D(y) 则 CODE( ST R,D ; LD R,B ; FJ    R,_ );
+          否则 CODE( LD R,B ; FJ R,_ );
+  ② PUSH(p) ；RDL:=0;
+(接前页)                      条件语句的四元式结构
+
+㈡    设当前四元式          q:( el _ _ _ )
+    ⑴ 若 RDL==X 且 X(y) 则 CODE( ST R,X ; );RDL=0
+    ⑵ 返填转向地址：        POP(p`); BACK(p`,p+2)
+    ⑶ 编转向指令：CODE( JMP _, _ ); PUSH(p+1)
+
+㈢ 设当前四元式 q:( ie _ _ _ )
+    ⑴ 若 RDL==X 且 X(y)    则 CODE( ST R,X ; );
+    ⑵ 返填转向地址： POP(p`);BACK(p`,p+1)
+
+        SEM栈顶            把这个地
+        地址弹到             址填到
+         p`中              p`中
+9.2.5 循环语句四元式目标代码生成算法：
+
+【例9.7】 while (a>b) x=(a+b)*c;
+
+    ※ 计算机目标代码生成过程示例：
+B      QUAT[q]               OBJ[p]           RDL SEM
+    (1)(wh _ _ _)
+    (2)(> a(y) b(y) t1(y)) ① LD R,a ②GT R,b   t1   ①
+    (3)(do t1(n) _    _ ) ③FJ R,? ⑨                ③
+    (4)(+ a(y) b(y) t2(y)) ④LD R,a ⑤ADD R,b   t2
+    (5)(* t2(n) c(y) x(y)) ⑥MUL R,c           x
+    (6)(we _   _   _   ) ⑦ST R,x ⑧JMP_,? 1
+                       ⑨
+
+                                      实践中，先返
+                                      填，后编跳转
+                                        指令！
+(接前页)
+
+※ 算法设计：
+
+㈠ 设当前四元式 q:(wh _ _ _ )
+  PUSH(p)；
+(接前页)
+
+※ 算法设计：
+
+㈡    设当前四元式          q:( do B _ _ )
+⑴ 若 RDL==0 则 CODE( LD R,B ; FJ R,_ ); PUSH(p)；
+⑵ 若 RDL==B 则
+   ① 若 B(y) 则 CODE( ST R,B ; FJ    R,_ );
+            否则 CODE( FJ   R,_ );
+    ② PUSH(p)；RDL:=0;
+⑶ 若 RDL==D（D!=B） 则
+  ① 若 D(y) 则 CODE( ST R,D ; LD R,B ; FJ     R,_ );
+          否则 CODE( LD R,B ; FJ R,_ );
+  ② PUSH(p) ；RDL:=0;
+(接前页)
+
+㈢ 设当前四元式 q:( we _ _ _ )
+  ⑴ 若 RDL==X 且 X(y)       则 CODE( ST R,X ; );
+  (2) RDL:=0;
+  (3) 返填转向地址： POP(p`);BACK(p`,p+2)
+  (4) POP(p`) ;
+  (5) CODE(JMP _, p` );
+
+
+       SEM栈顶
+                           跳转到
+       地址弹到
+                           p`去
+        p`中
+9.3 一个简单代码生成器的实现
+ 主控程序         开始
+              预处理        包括划分
+                         基本块
+            取下一基本块
+                     n
+              取到了    结束处理
+  释放寄存器         y
+            变量活跃信息生成   结束
+
+            取下一四元式：q
+            编写 目标指令
+        y
+             基本块出口
+               n
+    ※ 表达式与赋值四元式
+            目标代码生成示例：
+【例9.8】设有赋值语句（四元式序列）：
+        x=a*(a+b-d)；a=(a+b)/2; y=5;
+
+B     QT[q]                    OBJ[p]      RDL SEM
+    ⑴(+ a(y) b(y) t1(y)) ①LD R,a ②ADD R,b t1
+    ⑵(- t1(y) d(y)t2(y)) ③ST R,t1 ④SUB R,d t2
+    ⑶(* a(n) t2(n) x(y)) ⑤MUL R,a           x
+    ⑷(/ t1(n) 2 a(y)) ⑥ST R,x ⑦LD R,t1 a
+                         ⑧DIV R,2
+    ⑸(:= 5 _ y(y)) 9 ST R,a 10 LD R,5       y
+     基本块出口               11 ST R,y
+                                          释放寄
+                                          存器！
+※ 条件语句目标代码生成示例：
+【例9.9】单寄存器下条件语句目标代码生成：
+     如：if(a>b)x=(a+b)*c;else x=5-a*b;
+ B     QUAT[q]                  OBJ[p]      RDL SEM
+     ⑴(> a(y) b(y) t1(y)) ①LD R,a ②GT R,b   t1
+     ⑵(if t1(n) _ _ ) ③FJ R,? ⑨                  ③
+     ⑶(+ a(y) b(y) t2(y)) ④LD R,a ⑤ADD R,b t2
+     ⑷(* t2(n) c(y) x(y)) ⑥MUL R,c           x
+     ⑸(el _ _ _ ) ⑦ST R,x ⑧JMP_,? 15             ⑧
+     ⑹(* a(y) b(y) t3(y)) ⑨LD R,a ⑩MUL R,b  t3
+     ⑺(- 5 t3(y) x(y)) 11 ST R,t3 12 LD R,5  x
+                          13 SUB R,t3
+     ⑻(ie _ _ _ ) 14 ST R,x
+        …                 15
+习题：
+【习题9.4】解释下列词语：
+      ⑴寄存器状态变量 ； ⑵释放寄存器；
+【习题9.5】简要叙述代码生成器(控制器)的过程；
+【习题9.6】已知下列语句：
+    if(a+b<c) x=(a+b)/(c-d)+(a+b);
+      ※ 试分别解答：
+   ⑴ 写出优化的四元式序列；
+   ⑵ 标记变量的活跃信息；
+   ⑶ 描述单寄存器R下的目标代码生成过程。
+※ 条件语句的四元式结构：
+
+设 条件语句： if（E）S1 ; else S2 ;
+则 四元式结构：
+          quat(E)
+        q1(if res(E)_ _ )
+           quat(S1)
+        q2(el _ _ _ )
+           quat(S2)
+        q3(ie _ _         _   )
+
+注     q2(el   _   _   _   )
+     的下面就是 S2 语句的入口。
+
