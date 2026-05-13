@@ -9,6 +9,46 @@
 #include <string>
 #include <vector>
 
+// 函数表项：对应课程资料中的 PFINFL。
+struct FunctionInfo {
+    std::string name;
+    std::string returnType;
+    int level = 1;
+    int offset = 0;
+    int paramCount = 0;
+    int paramStart = 0;
+    int entryQuad = -1;
+    int localSize = 0;
+    int tempSize = 0;
+};
+
+// 形参表项：PFINFL 中 PARAM 指针指向的参数信息。
+struct ParameterInfo {
+    std::string functionName;
+    std::string name;
+    std::string type;
+    std::string passMode; // vf 表示值参，vn 表示变参
+    int offset = 0;
+    int size = 0;
+};
+
+// 活动记录项：描述某个作用域运行时值单元的相对布局。
+struct ActivationRecordItem {
+    std::string scope;
+    std::string name;
+    std::string category;
+    std::string type;
+    int offset = 0;
+    int size = 0;
+};
+
+// 基本块：由连续四元式构成的单入口单出口代码片段。
+struct BasicBlock {
+    int id = 0;
+    int start = 0;
+    int end = 0;
+};
+
 // 编译结果：把前端各阶段产生的数据统一打包，方便控制台或 GUI 展示。
 struct CompileResult {
     bool success = false;
@@ -22,7 +62,12 @@ struct CompileResult {
     std::vector<Symbol> symbols;
     std::vector<RecordType> recordTypes;
     std::vector<ArrayType> arrayTypes;
+    std::vector<FunctionInfo> functionTable;
+    std::vector<ParameterInfo> parameterTable;
+    std::vector<ActivationRecordItem> activationRecords;
     std::vector<Quadruple> quadruples;
+    std::vector<Quadruple> optimizedQuadruples;
+    std::vector<BasicBlock> basicBlocks;
     std::map<std::string, double> runtimeValues;
 };
 

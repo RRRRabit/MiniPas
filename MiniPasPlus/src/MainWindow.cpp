@@ -7,9 +7,14 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QMessageBox>
+#include <QRegularExpression>
 #include <QSplitter>
+#include <QTextBlock>
 #include <QTableWidgetItem>
+#include <QTextCursor>
+#include <QTextDocument>
 #include <QVBoxLayout>
+#include <set>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
@@ -28,9 +33,14 @@ MainWindow::MainWindow(QWidget* parent)
       typelTable_(nullptr),
       rinflTable_(nullptr),
       ainflTable_(nullptr),
+      pfinflTable_(nullptr),
+      paramTable_(nullptr),
+      conslTable_(nullptr),
       lenlTable_(nullptr),
+      vallTable_(nullptr),
       recordTable_(nullptr),
       quadrupleTable_(nullptr),
+      optimizedQuadrupleTable_(nullptr),
       runtimeText_(nullptr) {
     buildUi();
 }
@@ -55,24 +65,19 @@ void MainWindow::buildUi() {
     sourceEdit_ = new QPlainTextEdit(sourceGroup);
     sourceEdit_->setFont(QFont("Consolas", 11));
     sourceEdit_->setPlainText(
-        "PROGRAM test\n"
-        "TYPE re = RECORD\n"
-        "    a: REAL;\n"
-        "    b: CHAR;\n"
-        "END;\n"
-        "arr = ARRAY[1..10] OF re;\n"
-        "\n"
-        "FUNCTION f(VAR m: BOOLEAN): INTEGER;\n"
-        "VAR n: INTEGER;\n"
+        "PROGRAM demo\n"
+        "VAR x, y: INTEGER;\n"
         "BEGIN\n"
-        "END;\n"
-        "\n"
-        "VAR x: re;\n"
-        "    z: arr;\n"
-        "    y: REAL;\n"
-        "BEGIN\n"
-        "    x.a := 3.14;\n"
-        "    y := x.a + 2\n"
+        "    x := 0;\n"
+        "    y := 5;\n"
+        "    WHILE x < y DO\n"
+        "    BEGIN\n"
+        "        IF x = 2 THEN\n"
+        "            y := y - 1\n"
+        "        ELSE\n"
+        "            y := y + 0;\n"
+        "        x := x + 1\n"
+        "    END\n"
         "END.");
     sourceLayout->addWidget(sourceEdit_);
 
@@ -118,8 +123,12 @@ void MainWindow::buildUi() {
     tabWidget_->addTab(createTablePage("record 结构体字段偏移信息", recordTable_), "Record类型表");
 
     quadrupleTable_ = new QTableWidget(tabWidget_);
-    setupTable(quadrupleTable_, {"序号", "op", "arg1", "arg2", "result"});
+    setupTable(quadrupleTable_, {"基本块", "序号", "op", "arg1", "arg2", "result"});
     tabWidget_->addTab(createTablePage("中间代码生成阶段得到的四元式序列", quadrupleTable_), "四元式序列");
+
+    optimizedQuadrupleTable_ = new QTableWidget(tabWidget_);
+    setupTable(optimizedQuadrupleTable_, {"基本块", "序号", "op", "arg1", "arg2", "result"});
+    tabWidget_->addTab(createTablePage("基本块内 DAG 优化后的四元式序列", optimizedQuadrupleTable_), "优化后四元式");
 
     runtimeText_ = new QTextEdit(tabWidget_);
     runtimeText_->setReadOnly(true);
@@ -141,18 +150,41 @@ void MainWindow::buildUi() {
 
     connect(compileButton_, &QPushButton::clicked, this, [this]() { compileAndRun(); });
     connect(clearButton_, &QPushButton::clicked, this, [this]() { clearOutput(); });
+    connect(tokenTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
+        const QTableWidgetItem* lineItem = tokenTable_->item(row, 4);
+        const QTableWidgetItem* colItem = tokenTable_->item(row, 5);
+        const QTableWidgetItem* lexemeItem = tokenTable_->item(row, 3);
+        if (!lineItem || !colItem || !lexemeItem) {
+            return;
+        }
+        highlightTokenAt(lineItem->text().toInt(), colItem->text().toInt(), lexemeItem->text());
+    });
+    connect(synblTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
+        const QTableWidgetItem* nameItem = synblTable_->item(row, 1);
+        if (!nameItem) {
+            return;
+        }
+        highlightWordOccurrences(nameItem->text());
+    });
+    connect(identifierTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
+        const QTableWidgetItem* nameItem = identifierTable_->item(row, 1);
+        if (!nameItem) {
+            return;
+        }
+        highlightWordOccurrences(nameItem->text());
+    });
 }
 
 QWidget* MainWindow::createSymbolSystemPage() {
     auto* page = new QWidget(tabWidget_);
     auto* layout = new QVBoxLayout(page);
-    auto* label = new QLabel("语义分析阶段维护的符号表系统：总表、类型表、结构表、数组表和长度表", page);
+    auto* label = new QLabel("语义分析阶段维护的符号表系统：SYNBL / TYPEL / RINFL / AINFL / PFINFL / CONSL / LENL / VALL", page);
     label->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
 
     symbolTabWidget_ = new QTabWidget(page);
 
     synblTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(synblTable_, {"序号", "NAME", "TYPE", "CAT", "ADDR", "SIZE"});
+    setupTable(synblTable_, {"序号", "NAME", "TYPEL", "CAT", "INFO"});
     symbolTabWidget_->addTab(createTablePage("SYNBL 总表：保存标识符及其语义信息", synblTable_), "SYNBL总表");
 
     typelTable_ = new QTableWidget(symbolTabWidget_);
@@ -164,12 +196,28 @@ QWidget* MainWindow::createSymbolSystemPage() {
     symbolTabWidget_->addTab(createTablePage("RINFL 结构表：保存 record 字段名、字段偏移和字段类型", rinflTable_), "RINFL结构表");
 
     ainflTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(ainflTable_, {"序号", "ArrayName", "LOW", "UP", "CTP", "CLEN", "TOTAL"});
+    setupTable(ainflTable_, {"序号", "ArrayName", "LOW", "UP", "CTP", "CLEN"});
     symbolTabWidget_->addTab(createTablePage("AINFL 数组表：保存数组上下界、成分类型和成分长度", ainflTable_), "AINFL数组表");
+
+    pfinflTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(pfinflTable_, {"序号", "Name", "LEVEL", "OFF", "FN", "ENTRY", "PARAM"});
+    symbolTabWidget_->addTab(createTablePage("PFINFL 函数表：保存函数层次、参数入口和入口四元式", pfinflTable_), "PFINFL函数表");
+
+    paramTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(paramTable_, {"序号", "Function", "NAME", "TYPEL", "CAT", "INFO"});
+    symbolTabWidget_->addTab(createTablePage("PARAM 形参表：表项规则与 SYNBL 保持一致", paramTable_), "PARAM形参表");
+
+    conslTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(conslTable_, {"序号", "Text", "Type", "Value"});
+    symbolTabWidget_->addTab(createTablePage("CONSL 常量表：保存常量初值", conslTable_), "CONSL常量表");
 
     lenlTable_ = new QTableWidget(symbolTabWidget_);
     setupTable(lenlTable_, {"序号", "TYPE", "LEN"});
     symbolTabWidget_->addTab(createTablePage("LENL 长度表：保存各类型占用的字节数", lenlTable_), "LENL长度表");
+
+    vallTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(vallTable_, {"Scope", "Name", "Offset", "Size"});
+    symbolTabWidget_->addTab(createTablePage("VALL 活动记录：展示运行时值单元的相对布局", vallTable_), "VALL活动记录");
 
     layout->addWidget(label);
     layout->addWidget(symbolTabWidget_);
@@ -239,10 +287,16 @@ void MainWindow::clearOutput() {
     typelTable_->setRowCount(0);
     rinflTable_->setRowCount(0);
     ainflTable_->setRowCount(0);
+    pfinflTable_->setRowCount(0);
+    paramTable_->setRowCount(0);
+    conslTable_->setRowCount(0);
     lenlTable_->setRowCount(0);
+    vallTable_->setRowCount(0);
     recordTable_->setRowCount(0);
     quadrupleTable_->setRowCount(0);
+    optimizedQuadrupleTable_->setRowCount(0);
     runtimeText_->clear();
+    clearSourceHighlight();
     statusLabel_->setText("输出已清空");
     statusLabel_->setStyleSheet("color: #333333; font-weight: 600;");
 }
@@ -254,6 +308,7 @@ void MainWindow::fillAllTables(const CompileResult& result) {
     fillSymbolTable(result);
     fillRecordTable(result);
     fillQuadrupleTable(result);
+    fillOptimizedQuadrupleTable(result);
     fillRuntimeText(result);
 }
 
@@ -308,7 +363,11 @@ void MainWindow::fillSymbolTable(const CompileResult& result) {
     fillTypelTable(result);
     fillRinflTable(result);
     fillAinflTable(result);
+    fillPfinflTable(result);
+    fillParamTable(result);
+    fillConslTable(result);
     fillLenlTable(result);
+    fillVallTable(result);
 }
 
 void MainWindow::fillSynblTable(const CompileResult& result) {
@@ -317,44 +376,48 @@ void MainWindow::fillSynblTable(const CompileResult& result) {
         const Symbol& symbol = result.symbols[row];
         synblTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
         synblTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(symbol.name)));
-        synblTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(symbol.typeName)));
-        synblTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(symbol.kind)));
-        synblTable_->setItem(row, 4, new QTableWidgetItem(symbol.address >= 0 ? QString::number(symbol.address) : "_"));
-        synblTable_->setItem(row, 5, new QTableWidgetItem(QString::number(symbol.size)));
+        synblTable_->setItem(row, 2, new QTableWidgetItem(synblTypeRef(symbol)));
+        QString cat = synblCategory(symbol);
+        synblTable_->setItem(row, 3, new QTableWidgetItem(cat));
+
+        QString info = "_";
+        if (cat == "vn" || cat == "vt" || cat == "v" || cat == "tv") {
+            info = QString("(%1,%2)").arg(symbolLevel(symbol)).arg(symbol.address >= 0 ? symbol.address : 0);
+        } else if (cat == "t" || cat == "d") {
+            info = lenlPointer(symbol.typeName, result);
+        } else if (cat == "f" || cat == "p") {
+            info = "PFINFL";
+        }
+        synblTable_->setItem(row, 4, new QTableWidgetItem(info));
     }
 }
 
 void MainWindow::fillTypelTable(const CompileResult& result) {
-    typelTable_->setRowCount(4 + static_cast<int>(result.recordTypes.size()) + static_cast<int>(result.arrayTypes.size()));
-
-    const QString basicTypes[4][3] = {
-        {"integer", "basic", "LEN=4"},
-        {"real", "basic", "LEN=8"},
-        {"char", "basic", "LEN=1"},
-        {"boolean", "basic", "LEN=1"}
-    };
+    typelTable_->setRowCount(1 + static_cast<int>(result.recordTypes.size()) + static_cast<int>(result.arrayTypes.size()));
 
     int row = 0;
-    for (; row < 4; ++row) {
-        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
-        typelTable_->setItem(row, 1, new QTableWidgetItem(basicTypes[row][0]));
-        typelTable_->setItem(row, 2, new QTableWidgetItem(basicTypes[row][1]));
-        typelTable_->setItem(row, 3, new QTableWidgetItem(basicTypes[row][2]));
-    }
+    typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+    typelTable_->setItem(row, 1, new QTableWidgetItem("ircb"));
+    typelTable_->setItem(row, 2, new QTableWidgetItem("basic"));
+    typelTable_->setItem(row, 3, new QTableWidgetItem(""));
+    ++row;
 
+    int rinflStart = 0;
     for (const auto& record : result.recordTypes) {
         typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
         typelTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
         typelTable_->setItem(row, 2, new QTableWidgetItem("record"));
-        typelTable_->setItem(row, 3, new QTableWidgetItem(QString("RINFL, totalSize=%1").arg(record.totalSize)));
+        typelTable_->setItem(row, 3, new QTableWidgetItem(QString("RINFL+%1").arg(rinflStart)));
+        rinflStart += static_cast<int>(record.fields.size());
         ++row;
     }
 
-    for (const auto& array : result.arrayTypes) {
+    for (int i = 0; i < static_cast<int>(result.arrayTypes.size()); ++i) {
+        const auto& array = result.arrayTypes[i];
         typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
         typelTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
         typelTable_->setItem(row, 2, new QTableWidgetItem("array"));
-        typelTable_->setItem(row, 3, new QTableWidgetItem(QString("AINFL, totalSize=%1").arg(array.totalSize)));
+        typelTable_->setItem(row, 3, new QTableWidgetItem(QString("AINFL+%1").arg(i)));
         ++row;
     }
 }
@@ -373,7 +436,7 @@ void MainWindow::fillRinflTable(const CompileResult& result) {
             rinflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
             rinflTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(field.name)));
             rinflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(field.offset)));
-            rinflTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(field.type)));
+            rinflTable_->setItem(row, 4, new QTableWidgetItem(typeRef(field.type)));
             rinflTable_->setItem(row, 5, new QTableWidgetItem(QString::number(field.size)));
             ++row;
         }
@@ -390,7 +453,52 @@ void MainWindow::fillAinflTable(const CompileResult& result) {
         ainflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(array.high)));
         ainflTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(array.elementType)));
         ainflTable_->setItem(row, 5, new QTableWidgetItem(QString::number(array.elementSize)));
-        ainflTable_->setItem(row, 6, new QTableWidgetItem(QString::number(array.totalSize)));
+    }
+}
+
+void MainWindow::fillPfinflTable(const CompileResult& result) {
+    pfinflTable_->setRowCount(static_cast<int>(result.functionTable.size()));
+    for (int row = 0; row < static_cast<int>(result.functionTable.size()); ++row) {
+        const auto& function = result.functionTable[row];
+        pfinflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        pfinflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(function.name)));
+        pfinflTable_->setItem(row, 2, new QTableWidgetItem(QString::number(function.level)));
+        pfinflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(function.offset)));
+        pfinflTable_->setItem(row, 4, new QTableWidgetItem(QString::number(function.paramCount)));
+        pfinflTable_->setItem(row, 5, new QTableWidgetItem(QString::number(function.entryQuad)));
+        pfinflTable_->setItem(row, 6, new QTableWidgetItem(QString("PARAM+%1").arg(function.paramStart)));
+    }
+}
+
+void MainWindow::fillParamTable(const CompileResult& result) {
+    paramTable_->setRowCount(static_cast<int>(result.parameterTable.size()));
+    for (int row = 0; row < static_cast<int>(result.parameterTable.size()); ++row) {
+        const auto& param = result.parameterTable[row];
+        paramTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        paramTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(param.functionName)));
+        paramTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(param.name)));
+        Symbol pseudo;
+        pseudo.name = param.name;
+        pseudo.typeName = param.type;
+        pseudo.kind = (param.passMode == "vn") ? "var parameter" : "parameter";
+        pseudo.address = param.offset;
+        pseudo.size = param.size;
+
+        paramTable_->setItem(row, 3, new QTableWidgetItem(synblTypeRef(pseudo)));
+        QString cat = synblCategory(pseudo);
+        paramTable_->setItem(row, 4, new QTableWidgetItem(cat));
+        paramTable_->setItem(row, 5, new QTableWidgetItem(QString("(%1,%2)").arg(2).arg(param.offset)));
+    }
+}
+
+void MainWindow::fillConslTable(const CompileResult& result) {
+    conslTable_->setRowCount(static_cast<int>(result.constantEntries.size()));
+    for (int row = 0; row < static_cast<int>(result.constantEntries.size()); ++row) {
+        const auto& entry = result.constantEntries[row];
+        conslTable_->setItem(row, 0, new QTableWidgetItem(QString::number(entry.index)));
+        conslTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(entry.text)));
+        conslTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(entry.type)));
+        conslTable_->setItem(row, 3, new QTableWidgetItem(QString::number(entry.numberValue, 'g', 12)));
     }
 }
 
@@ -426,6 +534,38 @@ void MainWindow::fillLenlTable(const CompileResult& result) {
     }
 }
 
+void MainWindow::fillVallTable(const CompileResult& result) {
+    int extraSeparators = 0;
+    std::string lastScope;
+    for (const auto& item : result.activationRecords) {
+        if (!lastScope.empty() && item.scope != lastScope) {
+            ++extraSeparators;
+        }
+        lastScope = item.scope;
+    }
+
+    vallTable_->setRowCount(static_cast<int>(result.activationRecords.size()) + extraSeparators);
+
+    int row = 0;
+    lastScope.clear();
+    for (const auto& item : result.activationRecords) {
+        if (!lastScope.empty() && item.scope != lastScope) {
+            vallTable_->setItem(row, 0, new QTableWidgetItem("----"));
+            vallTable_->setItem(row, 1, new QTableWidgetItem("----"));
+            vallTable_->setItem(row, 2, new QTableWidgetItem("----"));
+            vallTable_->setItem(row, 3, new QTableWidgetItem("----"));
+            ++row;
+        }
+
+        vallTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(item.scope)));
+        vallTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(item.name)));
+        vallTable_->setItem(row, 2, new QTableWidgetItem(QString::number(item.offset)));
+        vallTable_->setItem(row, 3, new QTableWidgetItem(QString::number(item.size)));
+        lastScope = item.scope;
+        ++row;
+    }
+}
+
 void MainWindow::fillRecordTable(const CompileResult& result) {
     int rowCount = 0;
     for (const auto& record : result.recordTypes) {
@@ -449,13 +589,27 @@ void MainWindow::fillRecordTable(const CompileResult& result) {
 
 void MainWindow::fillQuadrupleTable(const CompileResult& result) {
     quadrupleTable_->setRowCount(static_cast<int>(result.quadruples.size()));
+
+    std::vector<int> quadToBlock(result.quadruples.size(), -1);
+    for (const auto& block : result.basicBlocks) {
+        int begin = std::max(0, block.start);
+        int end = std::min(static_cast<int>(result.quadruples.size()) - 1, block.end);
+        for (int i = begin; i <= end; ++i) {
+            quadToBlock[i] = block.id;
+        }
+    }
+
     for (int row = 0; row < static_cast<int>(result.quadruples.size()); ++row) {
         const Quadruple& quad = result.quadruples[row];
-        quadrupleTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
-        quadrupleTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(quad.op)));
-        quadrupleTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(quad.arg1)));
-        quadrupleTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(quad.arg2)));
-        quadrupleTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(quad.result)));
+        QString blockLabel = (row < static_cast<int>(quadToBlock.size()) && quadToBlock[row] >= 0)
+            ? QString("B%1").arg(quadToBlock[row] + 1)
+            : "_";
+        quadrupleTable_->setItem(row, 0, new QTableWidgetItem(blockLabel));
+        quadrupleTable_->setItem(row, 1, new QTableWidgetItem(QString::number(row)));
+        quadrupleTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(quad.op)));
+        quadrupleTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(quad.arg1)));
+        quadrupleTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(quad.arg2)));
+        quadrupleTable_->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(quad.result)));
     }
 }
 
@@ -470,6 +624,142 @@ void MainWindow::fillRuntimeText(const CompileResult& result) {
     runtimeText_->setPlainText(text);
 }
 
+void MainWindow::fillOptimizedQuadrupleTable(const CompileResult& result) {
+    optimizedQuadrupleTable_->setRowCount(static_cast<int>(result.optimizedQuadruples.size()));
+    std::vector<int> quadToBlock(result.optimizedQuadruples.size(), -1);
+    if (!result.optimizedQuadruples.empty()) {
+        std::set<int> leaders;
+        leaders.insert(0);
+        struct IfCtx {
+            int ifIndex = -1;
+            int elIndex = -1;
+        };
+        std::map<int, int> ifToIe;
+        std::map<int, int> ifToEl;
+        std::vector<IfCtx> ifStack;
+        std::vector<int> whStack;
+        struct DoCtx {
+            int doIndex = -1;
+            int whIndex = -1;
+        };
+        std::vector<DoCtx> doStack;
+        std::map<int, int> doToWe;
+        std::map<int, int> weToWh;
+
+        for (int i = 0; i < static_cast<int>(result.optimizedQuadruples.size()); ++i) {
+            const Quadruple& q = result.optimizedQuadruples[i];
+            if (q.op == "if") {
+                ifStack.push_back({i, -1});
+            } else if (q.op == "el") {
+                if (!ifStack.empty()) {
+                    ifStack.back().elIndex = i;
+                }
+            } else if (q.op == "ie") {
+                if (!ifStack.empty()) {
+                    ifToIe[ifStack.back().ifIndex] = i;
+                    ifToEl[ifStack.back().ifIndex] = ifStack.back().elIndex;
+                    ifStack.pop_back();
+                }
+            } else if (q.op == "wh") {
+                whStack.push_back(i);
+            } else if (q.op == "do") {
+                int whIndex = whStack.empty() ? -1 : whStack.back();
+                doStack.push_back({i, whIndex});
+            } else if (q.op == "we") {
+                if (!doStack.empty()) {
+                    DoCtx ctx = doStack.back();
+                    doStack.pop_back();
+                    doToWe[ctx.doIndex] = i;
+                    if (ctx.whIndex >= 0) {
+                        weToWh[i] = ctx.whIndex;
+                    }
+                }
+                if (!whStack.empty()) {
+                    whStack.pop_back();
+                }
+            }
+        }
+
+        for (int i = 0; i < static_cast<int>(result.optimizedQuadruples.size()); ++i) {
+            const Quadruple& q = result.optimizedQuadruples[i];
+            if (q.op == "if") {
+                if (i + 1 < static_cast<int>(result.optimizedQuadruples.size())) {
+                    leaders.insert(i + 1);
+                }
+                int falseTarget = -1;
+                auto e = ifToEl.find(i);
+                if (e != ifToEl.end() && e->second >= 0) {
+                    falseTarget = e->second + 1;
+                } else {
+                    auto f = ifToIe.find(i);
+                    if (f != ifToIe.end()) {
+                        falseTarget = f->second;
+                    }
+                }
+                if (falseTarget >= 0 && falseTarget < static_cast<int>(result.optimizedQuadruples.size())) {
+                    leaders.insert(falseTarget);
+                }
+            } else if (q.op == "do") {
+                if (i + 1 < static_cast<int>(result.optimizedQuadruples.size())) {
+                    leaders.insert(i + 1);
+                }
+                auto f = doToWe.find(i);
+                if (f != doToWe.end()) {
+                    int falseTarget = f->second + 1;
+                    if (falseTarget < static_cast<int>(result.optimizedQuadruples.size())) {
+                        leaders.insert(falseTarget);
+                    }
+                }
+            } else if (q.op == "el") {
+                for (const auto& pair : ifToEl) {
+                    if (pair.second == i) {
+                        auto ie = ifToIe.find(pair.first);
+                        if (ie != ifToIe.end()) {
+                            leaders.insert(ie->second);
+                        }
+                        break;
+                    }
+                }
+            } else if (q.op == "we") {
+                auto w = weToWh.find(i);
+                if (w != weToWh.end()) {
+                    int condEntry = w->second + 1;
+                    if (condEntry < static_cast<int>(result.optimizedQuadruples.size())) {
+                        leaders.insert(condEntry);
+                    }
+                }
+                if (i + 1 < static_cast<int>(result.optimizedQuadruples.size())) {
+                    leaders.insert(i + 1);
+                }
+            }
+        }
+
+        std::vector<int> starts(leaders.begin(), leaders.end());
+        for (int bi = 0; bi < static_cast<int>(starts.size()); ++bi) {
+            int begin = starts[bi];
+            int end = (bi + 1 < static_cast<int>(starts.size()))
+                ? starts[bi + 1] - 1
+                : static_cast<int>(result.optimizedQuadruples.size()) - 1;
+            for (int i = begin; i <= end; ++i) {
+                quadToBlock[i] = bi;
+            }
+        }
+    }
+
+    for (int row = 0; row < static_cast<int>(result.optimizedQuadruples.size()); ++row) {
+        const Quadruple& quad = result.optimizedQuadruples[row];
+        QString blockLabel = (row < static_cast<int>(quadToBlock.size()) && quadToBlock[row] >= 0)
+            ? QString("B%1").arg(quadToBlock[row] + 1)
+            : "_";
+        optimizedQuadrupleTable_->setItem(row, 0, new QTableWidgetItem(blockLabel));
+        optimizedQuadrupleTable_->setItem(row, 1, new QTableWidgetItem(QString::number(row)));
+        optimizedQuadrupleTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(quad.op)));
+        optimizedQuadrupleTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(quad.arg1)));
+        optimizedQuadrupleTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(quad.arg2)));
+        optimizedQuadrupleTable_->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(quad.result)));
+    }
+}
+
 void MainWindow::setStatusSuccess(const QString& message) {
     statusLabel_->setText(message);
     statusLabel_->setStyleSheet("color: #16833a; font-weight: 700;");
@@ -478,4 +768,168 @@ void MainWindow::setStatusSuccess(const QString& message) {
 void MainWindow::setStatusError(const QString& message) {
     statusLabel_->setText(message);
     statusLabel_->setStyleSheet("color: #c62828; font-weight: 700;");
+}
+
+QString MainWindow::typeRef(const std::string& typeName) const {
+    if (typeName == "integer") {
+        return "itp";
+    }
+    if (typeName == "real") {
+        return "rtp";
+    }
+    if (typeName == "char") {
+        return "ctp";
+    }
+    if (typeName == "boolean") {
+        return "btp";
+    }
+    return QString::fromStdString(typeName);
+}
+
+QString MainWindow::synblTypeRef(const Symbol& symbol) const {
+    if (symbol.typeName == "integer" || symbol.typeName == "real"
+        || symbol.typeName == "char" || symbol.typeName == "boolean") {
+        return typeRef(symbol.typeName);
+    }
+    if (symbol.kind == "type") {
+        if (symbol.size == 0) {
+            return "_";
+        }
+        return QString::fromStdString(symbol.name);
+    }
+    return QString::fromStdString(symbol.typeName);
+}
+
+QString MainWindow::synblCategory(const Symbol& symbol) const {
+    if (symbol.kind == "program") {
+        return "p";
+    }
+    if (symbol.kind == "type") {
+        return "t";
+    }
+    if (symbol.kind == "function") {
+        return "f";
+    }
+    if (symbol.kind.find("parameter") != std::string::npos) {
+        return symbol.kind.find("var parameter") != std::string::npos ? "vn" : "vt";
+    }
+    if (symbol.kind == "type") {
+        return (symbol.typeName == symbol.name) ? "d" : "t";
+    }
+    if (symbol.kind.find("record variable") != std::string::npos
+        || symbol.kind.find("array variable") != std::string::npos
+        || symbol.kind.find("variable") != std::string::npos) {
+        return "v";
+    }
+    if (symbol.kind == "temporary") {
+        return "tv";
+    }
+    return QString::fromStdString(symbol.kind);
+}
+
+int MainWindow::symbolLevel(const Symbol& symbol) const {
+    if (symbol.kind.find(" of ") != std::string::npos) {
+        return 2;
+    }
+    return 1;
+}
+
+QString MainWindow::lenlPointer(const std::string& typeName, const CompileResult& result) const {
+    int idx = -1;
+    if (typeName == "integer") {
+        idx = 0;
+    } else if (typeName == "real") {
+        idx = 1;
+    } else if (typeName == "char") {
+        idx = 2;
+    } else if (typeName == "boolean") {
+        idx = 3;
+    } else {
+        int base = 4;
+        for (int i = 0; i < static_cast<int>(result.recordTypes.size()); ++i) {
+            if (result.recordTypes[i].name == typeName) {
+                idx = base + i;
+                break;
+            }
+        }
+        if (idx == -1) {
+            base += static_cast<int>(result.recordTypes.size());
+            for (int i = 0; i < static_cast<int>(result.arrayTypes.size()); ++i) {
+                if (result.arrayTypes[i].name == typeName) {
+                    idx = base + i;
+                    break;
+                }
+            }
+        }
+    }
+    return idx >= 0 ? QString("LENL+%1").arg(idx) : "LENL";
+}
+
+int MainWindow::positionFromLineColumn(int line, int column) const {
+    if (line <= 0 || column <= 0) {
+        return -1;
+    }
+    QTextDocument* doc = sourceEdit_->document();
+    QTextBlock block = doc->findBlockByNumber(line - 1);
+    if (!block.isValid()) {
+        return -1;
+    }
+    int start = block.position();
+    int length = block.length() - 1;
+    int colZero = column - 1;
+    if (colZero > length) {
+        colZero = length;
+    }
+    return start + colZero;
+}
+
+void MainWindow::highlightTokenAt(int line, int column, const QString& lexeme) {
+    clearSourceHighlight();
+    int pos = positionFromLineColumn(line, column);
+    if (pos < 0) {
+        return;
+    }
+
+    QTextCursor cursor(sourceEdit_->document());
+    cursor.setPosition(pos);
+    cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, lexeme.size());
+
+    QTextEdit::ExtraSelection sel;
+    sel.cursor = cursor;
+    sel.format.setBackground(QColor("#ffe082"));
+    sel.format.setForeground(QColor("#111827"));
+    sourceEdit_->setExtraSelections({sel});
+    sourceEdit_->setTextCursor(cursor);
+}
+
+void MainWindow::highlightWordOccurrences(const QString& word) {
+    clearSourceHighlight();
+    if (word.isEmpty()) {
+        return;
+    }
+
+    QList<QTextEdit::ExtraSelection> selections;
+    QTextDocument* doc = sourceEdit_->document();
+    QTextCursor cursor(doc);
+    QRegularExpression re(QString("\\b%1\\b").arg(QRegularExpression::escape(word)));
+
+    while (!cursor.isNull() && !cursor.atEnd()) {
+        cursor = doc->find(re, cursor);
+        if (!cursor.isNull()) {
+            QTextEdit::ExtraSelection sel;
+            sel.cursor = cursor;
+            sel.format.setBackground(QColor("#c8e6c9"));
+            sel.format.setForeground(QColor("#0f172a"));
+            selections.append(sel);
+        }
+    }
+
+    sourceEdit_->setExtraSelections(selections);
+    if (!selections.isEmpty()) {
+        sourceEdit_->setTextCursor(selections.first().cursor);
+    }
+}
+
+void MainWindow::clearSourceHighlight() {
+    sourceEdit_->setExtraSelections({});
 }

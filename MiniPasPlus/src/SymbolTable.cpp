@@ -13,6 +13,15 @@ const SymbolEntry* SymbolTable::find(const std::string& name) const {
     return nullptr;
 }
 
+SymbolEntry* SymbolTable::findMutable(const std::string& name) {
+    for (auto& entry : entries_) {
+        if (entry.name == name) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
 const std::vector<SymbolEntry>& SymbolTable::entries() const {
     return entries_;
 }

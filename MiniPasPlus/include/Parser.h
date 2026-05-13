@@ -2,6 +2,7 @@
 #define MINIPASPLUS_PARSER_H
 
 #include "CompileResult.h"
+#include <map>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,11 @@ public:
     CompileResult parse();
 
 private:
+    struct ExprResult {
+        std::string place;
+        std::string type;
+    };
+
     std::vector<Token> tokens_;
     std::size_t current_;
     CompileResult result_;
@@ -21,7 +27,14 @@ private:
     TypeTable typeTable_;
     int tempIndex_;
     int nextAddress_;
+    int currentParamOffset_;
+    int currentLocalOffset_;
+    int currentFunctionTempSize_;
     std::string programName_;
+    std::string currentFunctionName_;
+    std::vector<FunctionInfo> functionInfos_;
+    std::vector<ParameterInfo> parameterInfos_;
+    std::vector<ActivationRecordItem> activationRecords_;
 
     // 每个 parse 函数对应一个非终结符。
     void parseProgram();
@@ -48,10 +61,13 @@ private:
     void parseStmtList();
     void parseStmt();
     void parseAssignStmt();
+    void parseWhileStmt();
+    void parseIfStmt();
+    ExprResult parseCondition();
     std::string parseLeftValue();
-    std::string parseExpression();
-    std::string parseTerm();
-    std::string parseFactor();
+    ExprResult parseExpression();
+    ExprResult parseTerm();
+    ExprResult parseFactor();
 
     const Token& peek() const;
     const Token& previous() const;
@@ -66,8 +82,15 @@ private:
     bool isStatementStart() const;
     void checkVariableDeclared(const Token& nameToken) const;
     void checkLeftValue(const Token& baseToken, const Token* fieldToken) const;
-    std::string newTemp();
+    std::string resolveLValueType(const std::string& leftValue) const;
+    std::string mergeNumericType(const std::string& leftType, const std::string& rightType, const Token& opToken) const;
+    bool canAssign(const std::string& targetType, const std::string& sourceType) const;
+    std::string newTemp(const std::string& typeName);
     void emit(const std::string& op, const std::string& arg1, const std::string& arg2, const std::string& result);
+    void addActivationRecord(const std::string& scope, const std::string& name, const std::string& category,
+                             const std::string& type, int offset, int size);
+    void buildActivationRecords();
+    void buildBasicBlocks();
 };
 
 #endif

@@ -32,9 +32,14 @@ private:
     QTableWidget* typelTable_;
     QTableWidget* rinflTable_;
     QTableWidget* ainflTable_;
+    QTableWidget* pfinflTable_;
+    QTableWidget* paramTable_;
+    QTableWidget* conslTable_;
     QTableWidget* lenlTable_;
+    QTableWidget* vallTable_;
     QTableWidget* recordTable_;
     QTableWidget* quadrupleTable_;
+    QTableWidget* optimizedQuadrupleTable_;
     QTextEdit* runtimeText_;
 
     void buildUi();
@@ -53,12 +58,26 @@ private:
     void fillTypelTable(const CompileResult& result);
     void fillRinflTable(const CompileResult& result);
     void fillAinflTable(const CompileResult& result);
+    void fillPfinflTable(const CompileResult& result);
+    void fillParamTable(const CompileResult& result);
+    void fillConslTable(const CompileResult& result);
     void fillLenlTable(const CompileResult& result);
+    void fillVallTable(const CompileResult& result);
     void fillRecordTable(const CompileResult& result);
     void fillQuadrupleTable(const CompileResult& result);
+    void fillOptimizedQuadrupleTable(const CompileResult& result);
     void fillRuntimeText(const CompileResult& result);
     void setStatusSuccess(const QString& message);
     void setStatusError(const QString& message);
+    QString typeRef(const std::string& typeName) const;
+    QString synblTypeRef(const Symbol& symbol) const;
+    QString synblCategory(const Symbol& symbol) const;
+    int symbolLevel(const Symbol& symbol) const;
+    QString lenlPointer(const std::string& typeName, const CompileResult& result) const;
+    int positionFromLineColumn(int line, int column) const;
+    void highlightTokenAt(int line, int column, const QString& lexeme);
+    void highlightWordOccurrences(const QString& word);
+    void clearSourceHighlight();
 };
 
 #endif

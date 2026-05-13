@@ -9,13 +9,15 @@ Lexer::Lexer(std::string source)
         {1, "program"}, {2, "var"}, {3, "integer"}, {4, "real"},
         {5, "char"}, {6, "begin"}, {7, "end"}, {8, "type"},
         {9, "record"}, {10, "array"}, {11, "of"}, {12, "function"},
-        {13, "boolean"}
+        {13, "boolean"}, {14, "while"}, {15, "do"},
+        {16, "if"}, {17, "then"}, {18, "else"}
     };
 
     delimiterTable_ = {
         {1, ","}, {2, ":"}, {3, ";"}, {4, ":="}, {5, "*"},
         {6, "/"}, {7, "+"}, {8, "-"}, {9, "."}, {10, "("},
-        {11, ")"}, {12, "="}, {13, "["}, {14, "]"}, {15, ".."}
+        {11, ")"}, {12, "="}, {13, "["}, {14, "]"}, {15, ".."},
+        {16, "<"}, {17, ">"}, {18, "!="}
     };
 }
 
@@ -101,10 +103,14 @@ std::vector<Token> Lexer::tokenize() {
             if (text == ":" && !isAtEnd() && peek() == '=') {
                 text.push_back(advance());
                 tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn, "p", findDelimiterIndex(text)});
+            } else if (text == "!" && !isAtEnd() && peek() == '=') {
+                text.push_back(advance());
+                tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn, "p", findDelimiterIndex(text)});
             } else if (text == "." && !isAtEnd() && peek() == '.') {
                 text.push_back(advance());
                 tokens.push_back({TokenType::DELIMITER, text, startLine, startColumn, "p", findDelimiterIndex(text)});
-            } else if (text == "+" || text == "-" || text == "*" || text == "/" || text == "=") {
+            } else if (text == "+" || text == "-" || text == "*" || text == "/" || text == "="
+                       || text == "<" || text == ">") {
                 tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn, "p", findDelimiterIndex(text)});
             } else if (findDelimiterIndex(text) > 0) {
                 tokens.push_back({TokenType::DELIMITER, text, startLine, startColumn, "p", findDelimiterIndex(text)});

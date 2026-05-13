@@ -20,6 +20,7 @@ class SymbolTable {
 public:
     void add(const SymbolEntry& entry);
     const SymbolEntry* find(const std::string& name) const;
+    SymbolEntry* findMutable(const std::string& name);
     const std::vector<SymbolEntry>& entries() const;
 
 private:
