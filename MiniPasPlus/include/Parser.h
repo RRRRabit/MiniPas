@@ -82,6 +82,7 @@ private:
     bool isStatementStart() const;
     void checkVariableDeclared(const Token& nameToken) const;
     void checkLeftValue(const Token& baseToken, const Token* fieldToken) const;
+    std::string resolveArrayElementType(const Token& baseToken, const ExprResult& indexExpr) const;
     std::string resolveLValueType(const std::string& leftValue) const;
     std::string mergeNumericType(const std::string& leftType, const std::string& rightType, const Token& opToken) const;
     bool canAssign(const std::string& targetType, const std::string& sourceType) const;

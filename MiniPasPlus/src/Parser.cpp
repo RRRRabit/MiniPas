@@ -411,6 +411,18 @@ Parser::ExprResult Parser::parseCondition() {
 // LEFT_VALUE -> id | id . id
 std::string Parser::parseLeftValue() {
     Token base = consumeIdentifier("赋值语句左部缺少变量名");
+    if (match(TokenType::DELIMITER, "[")) {
+        ExprResult indexExpr = parseExpression();
+        consume(TokenType::DELIMITER, "]", "数组下标后缺少 ]");
+        std::string elementType = resolveArrayElementType(base, indexExpr);
+        if (match(TokenType::DELIMITER, ".")) {
+            Token field = consumeIdentifier(". 后面应是字段名");
+            errorAtToken(field, "暂不支持结构体数组字段访问: " + base.lexeme + "[...]." + field.lexeme);
+        }
+        (void)elementType;
+        return base.lexeme + "[" + indexExpr.place + "]";
+    }
+
     Token field;
     Token* fieldPtr = nullptr;
 
@@ -459,6 +471,18 @@ Parser::ExprResult Parser::parseTerm() {
 Parser::ExprResult Parser::parseFactor() {
     if (check(TokenType::IDENTIFIER)) {
         Token base = consumeIdentifier("表达式中缺少标识符");
+        if (match(TokenType::DELIMITER, "[")) {
+            ExprResult indexExpr = parseExpression();
+            consume(TokenType::DELIMITER, "]", "数组下标后缺少 ]");
+            std::string elementType = resolveArrayElementType(base, indexExpr);
+            if (match(TokenType::DELIMITER, ".")) {
+                Token field = consumeIdentifier(". 后面应是字段名");
+                errorAtToken(field, "暂不支持结构体数组字段访问: " + base.lexeme + "[...]." + field.lexeme);
+            }
+            std::string place = base.lexeme + "[" + indexExpr.place + "]";
+            return {place, elementType};
+        }
+
         Token field;
         Token* fieldPtr = nullptr;
         if (match(TokenType::DELIMITER, ".")) {
@@ -583,7 +607,38 @@ void Parser::checkLeftValue(const Token& baseToken, const Token* fieldToken) con
     }
 }
 
+std::string Parser::resolveArrayElementType(const Token& baseToken, const ExprResult& indexExpr) const {
+    checkVariableDeclared(baseToken);
+    if (indexExpr.type != "integer") {
+        errorAtToken(baseToken, "数组下标必须是 integer，当前为: " + indexExpr.type);
+    }
+
+    const SymbolEntry* symbol = symbolTable_.find(baseToken.lexeme);
+    if (symbol == nullptr) {
+        errorAtToken(baseToken, "使用了未声明变量: " + baseToken.lexeme);
+    }
+    const ArrayType* array = typeTable_.findArrayType(symbol->typeName);
+    if (array == nullptr) {
+        errorAtToken(baseToken, baseToken.lexeme + " 不是数组变量，不能使用下标访问");
+    }
+    return array->elementType;
+}
+
 std::string Parser::resolveLValueType(const std::string& leftValue) const {
+    std::size_t lbr = leftValue.find('[');
+    if (lbr != std::string::npos) {
+        std::string base = leftValue.substr(0, lbr);
+        const SymbolEntry* symbol = symbolTable_.find(base);
+        if (symbol == nullptr) {
+            return "";
+        }
+        const ArrayType* array = typeTable_.findArrayType(symbol->typeName);
+        if (array == nullptr) {
+            return "";
+        }
+        return array->elementType;
+    }
+
     std::size_t dotPos = leftValue.find('.');
     if (dotPos == std::string::npos) {
         const SymbolEntry* symbol = symbolTable_.find(leftValue);

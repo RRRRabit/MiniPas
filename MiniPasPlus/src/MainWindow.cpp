@@ -14,13 +14,17 @@
 #include <QTableWidgetItem>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <map>
 #include <set>
+#include <utility>
+#include <vector>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
       sourceEdit_(nullptr),
+      exampleCombo_(nullptr),
       compileButton_(nullptr),
       clearButton_(nullptr),
       tabWidget_(nullptr),
@@ -64,24 +68,121 @@ void MainWindow::buildUi() {
 
     auto* sourceGroup = new QGroupBox("源程序输入区", leftPanel);
     auto* sourceLayout = new QVBoxLayout(sourceGroup);
+    auto* exampleRow = new QHBoxLayout();
+    exampleRow->addWidget(new QLabel("示例代码:", sourceGroup));
+    exampleCombo_ = new QComboBox(sourceGroup);
+    exampleRow->addWidget(exampleCombo_, 1);
+    sourceLayout->addLayout(exampleRow);
     sourceEdit_ = new QPlainTextEdit(sourceGroup);
     sourceEdit_->setFont(QFont("Consolas", 11));
-    sourceEdit_->setPlainText(
-        "PROGRAM demo\n"
-        "VAR x, y: INTEGER;\n"
-        "BEGIN\n"
-        "    x := 0;\n"
-        "    y := 5;\n"
-        "    WHILE x < y DO\n"
-        "    BEGIN\n"
-        "        IF x = 2 THEN\n"
-        "            y := y - 1\n"
-        "        ELSE\n"
-        "            y := y + 0;\n"
-        "        x := x + 1\n"
-        "    END\n"
-        "END.");
     sourceLayout->addWidget(sourceEdit_);
+
+    const std::vector<std::pair<QString, QString>> examples = {
+        {
+            "1) if/while 嵌套",
+            "PROGRAM demoifwhile\n"
+            "VAR x, y: INTEGER;\n"
+            "BEGIN\n"
+            "    x := 0;\n"
+            "    y := 5;\n"
+            "    WHILE x < y DO\n"
+            "    BEGIN\n"
+            "        IF x = 2 THEN\n"
+            "            y := y - 1\n"
+            "        ELSE\n"
+            "            y := y + 0;\n"
+            "        x := x + 1\n"
+            "    END\n"
+            "END."
+        },
+        {
+            "2) 数组读写（简单数组）",
+            "PROGRAM demoarray\n"
+            "TYPE arr = ARRAY[1..5] OF INTEGER;\n"
+            "VAR a: arr;\n"
+            "    i, x: INTEGER;\n"
+            "BEGIN\n"
+            "    i := 2;\n"
+            "    a[i] := 10;\n"
+            "    x := a[i] + 3;\n"
+            "    a[1] := x + 0\n"
+            "END."
+        },
+        {
+            "3) record 字段访问",
+            "PROGRAM demorecord\n"
+            "TYPE rec = RECORD\n"
+            "    a: INTEGER;\n"
+            "    b: REAL;\n"
+            "END;\n"
+            "VAR x: rec;\n"
+            "    y: REAL;\n"
+            "BEGIN\n"
+            "    x.a := 3;\n"
+            "    x.b := 2.5;\n"
+            "    y := x.b + x.a\n"
+            "END."
+        },
+        {
+            "4) 局部优化演示（常量折叠/传播）",
+            "PROGRAM demoopt\n"
+            "VAR x, y, z: INTEGER;\n"
+            "BEGIN\n"
+            "    x := 1 + 2;\n"
+            "    y := x + 0;\n"
+            "    z := (1 + 2) * (1 + 2)\n"
+            "END."
+        },
+        {
+            "5) 函数声明 + 主程序",
+            "PROGRAM demofunction\n"
+            "FUNCTION f(VAR m: INTEGER): INTEGER;\n"
+            "VAR n: INTEGER;\n"
+            "BEGIN\n"
+            "    n := m + 1;\n"
+            "    m := n\n"
+            "END;\n"
+            "VAR x, y: INTEGER;\n"
+            "BEGIN\n"
+            "    x := 3;\n"
+            "    y := x + 2\n"
+            "END."
+        },
+        {
+            "6) 综合（record + array + 控制流）",
+            "PROGRAM demomix\n"
+            "TYPE rec = RECORD\n"
+            "    a: INTEGER;\n"
+            "END;\n"
+            "arr = ARRAY[1..4] OF INTEGER;\n"
+            "VAR r: rec;\n"
+            "    a: arr;\n"
+            "    i, s: INTEGER;\n"
+            "BEGIN\n"
+            "    i := 1;\n"
+            "    s := 0;\n"
+            "    WHILE i < 4 DO\n"
+            "    BEGIN\n"
+            "        a[i] := i * 2;\n"
+            "        IF a[i] > 2 THEN\n"
+            "            s := s + a[i]\n"
+            "        ELSE\n"
+            "            s := s + 0;\n"
+            "        i := i + 1\n"
+            "    END;\n"
+            "    r.a := s\n"
+            "END."
+        }
+    };
+    for (const auto& ex : examples) {
+        exampleCombo_->addItem(ex.first);
+    }
+    sourceEdit_->setPlainText(examples.front().second);
+    connect(exampleCombo_, &QComboBox::currentIndexChanged, this, [this, examples](int index) {
+        if (index >= 0 && index < static_cast<int>(examples.size())) {
+            sourceEdit_->setPlainText(examples[index].second);
+        }
+    });
 
     auto* buttonArea = new QWidget(leftPanel);
     auto* buttonLayout = new QGridLayout(buttonArea);

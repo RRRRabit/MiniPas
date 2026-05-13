@@ -6,6 +6,7 @@
 #include <QMainWindow>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QComboBox>
 #include <QTableWidget>
 #include <QTabWidget>
 #include <QTextEdit>
@@ -17,6 +18,7 @@ public:
 
 private:
     QPlainTextEdit* sourceEdit_;
+    QComboBox* exampleCombo_;
     QPushButton* compileButton_;
     QPushButton* clearButton_;
     QTabWidget* tabWidget_;
