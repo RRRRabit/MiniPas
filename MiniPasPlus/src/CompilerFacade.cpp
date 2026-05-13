@@ -13,8 +13,11 @@ CompileResult CompilerFacade::compileAndRun(const std::string& sourceCode) {
         std::vector<Token> tokens = lexer.tokenize();
 
         finalResult.tokens = tokens;
+        finalResult.keywordTable = lexer.getKeywordTable();
+        finalResult.delimiterTable = lexer.getDelimiterTable();
         finalResult.identifierTable = lexer.getIdentifierTable();
         finalResult.constantTable = lexer.getConstantTable();
+        finalResult.constantEntries = lexer.getConstantEntries();
 
         for (const auto& token : tokens) {
             if (token.type == TokenType::ERROR) {

@@ -23,6 +23,8 @@ private:
     QLabel* statusLabel_;
 
     QTableWidget* tokenTable_;
+    QTableWidget* keywordTable_;
+    QTableWidget* delimiterTable_;
     QTableWidget* identifierTable_;
     QTableWidget* constantTable_;
     QTabWidget* symbolTabWidget_;
@@ -45,6 +47,7 @@ private:
     void fillAllTables(const CompileResult& result);
     void fillTokenTable(const CompileResult& result);
     void fillIdentifierAndConstantTables(const CompileResult& result);
+    void fillKeywordAndDelimiterTables(const CompileResult& result);
     void fillSymbolTable(const CompileResult& result);
     void fillSynblTable(const CompileResult& result);
     void fillTypelTable(const CompileResult& result);

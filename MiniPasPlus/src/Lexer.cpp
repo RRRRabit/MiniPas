@@ -1,23 +1,34 @@
 #include "Lexer.h"
 #include <cctype>
-#include <set>
+#include <cstdlib>
 #include <utility>
 
 Lexer::Lexer(std::string source)
-    : source_(std::move(source)), pos_(0), line_(1), column_(1) {}
+    : source_(std::move(source)), pos_(0), line_(1), column_(1) {
+    keywordTable_ = {
+        {1, "program"}, {2, "var"}, {3, "integer"}, {4, "real"},
+        {5, "char"}, {6, "begin"}, {7, "end"}, {8, "type"},
+        {9, "record"}, {10, "array"}, {11, "of"}, {12, "function"},
+        {13, "boolean"}
+    };
+
+    delimiterTable_ = {
+        {1, ","}, {2, ":"}, {3, ";"}, {4, ":="}, {5, "*"},
+        {6, "/"}, {7, "+"}, {8, "-"}, {9, "."}, {10, "("},
+        {11, ")"}, {12, "="}, {13, "["}, {14, "]"}, {15, ".."}
+    };
+}
 
 std::vector<Token> Lexer::tokenize() {
     std::vector<Token> tokens;
-    const std::set<std::string> keywords = {
-        "program", "type", "record", "var", "begin", "end",
-        "integer", "real", "char",
-        "array", "of", "function", "boolean"
-    };
 
     while (!isAtEnd()) {
         skipWhitespace();
         if (isAtEnd()) {
             break;
+        }
+        if (skipComment()) {
+            continue;
         }
 
         int startLine = line_;
@@ -31,11 +42,12 @@ std::vector<Token> Lexer::tokenize() {
             }
 
             std::string lowerWord = toLower(word);
-            if (keywords.count(lowerWord)) {
-                tokens.push_back({TokenType::KEYWORD, lowerWord, startLine, startColumn});
+            int keywordIndex = findKeywordIndex(lowerWord);
+            if (keywordIndex > 0) {
+                tokens.push_back({TokenType::KEYWORD, lowerWord, startLine, startColumn, "k", keywordIndex});
             } else {
-                addUnique(identifiers_, word);
-                tokens.push_back({TokenType::IDENTIFIER, word, startLine, startColumn});
+                int idIndex = addIdentifier(word);
+                tokens.push_back({TokenType::IDENTIFIER, word, startLine, startColumn, "i", idIndex});
             }
         } else if (std::isdigit(static_cast<unsigned char>(ch))) {
             std::string number;
@@ -43,34 +55,66 @@ std::vector<Token> Lexer::tokenize() {
                 number.push_back(advance());
             }
 
-            // 实数常量必须形如 12.34；如果点号后面不是数字，点号留给界符处理。
-            if (!isAtEnd() && peek() == '.' && std::isdigit(static_cast<unsigned char>(peekNext()))) {
+            std::string type = "integer";
+            if (!isAtEnd() && peek() == '.' && peekNext() != '.' && std::isdigit(static_cast<unsigned char>(peekNext()))) {
+                type = "real";
                 number.push_back(advance());
                 while (!isAtEnd() && std::isdigit(static_cast<unsigned char>(peek()))) {
                     number.push_back(advance());
                 }
             }
-            addUnique(constants_, number);
-            tokens.push_back({TokenType::CONSTANT, number, startLine, startColumn});
+
+            if (!isAtEnd()
+                && (std::isalpha(static_cast<unsigned char>(peek()))
+                    || (peek() == '.' && peekNext() != '.'))) {
+                std::string bad = number;
+                while (!isAtEnd() && !std::isspace(static_cast<unsigned char>(peek()))) {
+                    char next = peek();
+                    if (next == ';' || next == ',' || next == ')' || next == ']') {
+                        break;
+                    }
+                    bad.push_back(advance());
+                }
+                tokens.push_back({TokenType::ERROR, bad, startLine, startColumn, "err", -1});
+                continue;
+            }
+
+            int constIndex = addConstant(number, type, std::strtod(number.c_str(), nullptr));
+            tokens.push_back({TokenType::CONSTANT, number, startLine, startColumn, "c", constIndex});
+        } else if (ch == '\'') {
+            std::string value;
+            value.push_back(advance());
+            if (!isAtEnd() && peek() != '\n' && peek() != '\'') {
+                value.push_back(advance());
+            }
+            if (!isAtEnd() && peek() == '\'') {
+                value.push_back(advance());
+                int constIndex = addConstant(value, "char", value.size() >= 2 ? static_cast<double>(value[1]) : 0.0);
+                tokens.push_back({TokenType::CONSTANT, value, startLine, startColumn, "c", constIndex});
+            } else {
+                tokens.push_back({TokenType::ERROR, value, startLine, startColumn, "err", -1});
+            }
         } else {
             std::string text;
             text.push_back(advance());
+
             if (text == ":" && !isAtEnd() && peek() == '=') {
                 text.push_back(advance());
-                tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn});
+                tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn, "p", findDelimiterIndex(text)});
+            } else if (text == "." && !isAtEnd() && peek() == '.') {
+                text.push_back(advance());
+                tokens.push_back({TokenType::DELIMITER, text, startLine, startColumn, "p", findDelimiterIndex(text)});
             } else if (text == "+" || text == "-" || text == "*" || text == "/" || text == "=") {
-                tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn});
-            } else if (text == ";" || text == ":" || text == "," || text == "." || text == "(" || text == ")"
-                       || text == "[" || text == "]") {
-                tokens.push_back({TokenType::DELIMITER, text, startLine, startColumn});
+                tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn, "p", findDelimiterIndex(text)});
+            } else if (findDelimiterIndex(text) > 0) {
+                tokens.push_back({TokenType::DELIMITER, text, startLine, startColumn, "p", findDelimiterIndex(text)});
             } else {
-                // 非法字符不直接中断分析，而是生成 ERROR Token，便于界面或控制台定位问题。
-                tokens.push_back({TokenType::ERROR, text, startLine, startColumn});
+                tokens.push_back({TokenType::ERROR, text, startLine, startColumn, "err", -1});
             }
         }
     }
 
-    tokens.push_back({TokenType::END_OF_FILE, "EOF", line_, column_});
+    tokens.push_back({TokenType::END_OF_FILE, "EOF", line_, column_, "e", -1});
     return tokens;
 }
 
@@ -80,6 +124,18 @@ const std::vector<std::string>& Lexer::getIdentifierTable() const {
 
 const std::vector<std::string>& Lexer::getConstantTable() const {
     return constants_;
+}
+
+const std::vector<ConstantEntry>& Lexer::getConstantEntries() const {
+    return constantEntries_;
+}
+
+const std::vector<KeywordEntry>& Lexer::getKeywordTable() const {
+    return keywordTable_;
+}
+
+const std::vector<DelimiterEntry>& Lexer::getDelimiterTable() const {
+    return delimiterTable_;
 }
 
 char Lexer::peek() const {
@@ -114,13 +170,66 @@ void Lexer::skipWhitespace() {
     }
 }
 
-void Lexer::addUnique(std::vector<std::string>& table, const std::string& value) {
-    for (const auto& item : table) {
-        if (item == value) {
-            return;
+bool Lexer::skipComment() {
+    if (peek() == '{') {
+        advance();
+        while (!isAtEnd() && peek() != '}') {
+            advance();
+        }
+        if (!isAtEnd()) {
+            advance();
+        }
+        return true;
+    }
+
+    if (peek() == '/' && peekNext() == '/') {
+        while (!isAtEnd() && peek() != '\n') {
+            advance();
+        }
+        return true;
+    }
+
+    return false;
+}
+
+int Lexer::addIdentifier(const std::string& value) {
+    for (std::size_t i = 0; i < identifiers_.size(); ++i) {
+        if (identifiers_[i] == value) {
+            return static_cast<int>(i) + 1;
         }
     }
-    table.push_back(value);
+    identifiers_.push_back(value);
+    return static_cast<int>(identifiers_.size());
+}
+
+int Lexer::addConstant(const std::string& text, const std::string& type, double numberValue) {
+    for (std::size_t i = 0; i < constantEntries_.size(); ++i) {
+        if (constantEntries_[i].text == text && constantEntries_[i].type == type) {
+            return static_cast<int>(i) + 1;
+        }
+    }
+    int index = static_cast<int>(constantEntries_.size()) + 1;
+    constants_.push_back(text);
+    constantEntries_.push_back({index, text, type, numberValue});
+    return index;
+}
+
+int Lexer::findKeywordIndex(const std::string& word) const {
+    for (const auto& entry : keywordTable_) {
+        if (entry.word == word) {
+            return entry.index;
+        }
+    }
+    return -1;
+}
+
+int Lexer::findDelimiterIndex(const std::string& symbol) const {
+    for (const auto& entry : delimiterTable_) {
+        if (entry.symbol == symbol) {
+            return entry.index;
+        }
+    }
+    return -1;
 }
 
 std::string Lexer::toLower(const std::string& text) const {
@@ -142,4 +251,14 @@ std::string tokenTypeToString(TokenType type) {
     case TokenType::ERROR: return "ERROR";
     }
     return "ERROR";
+}
+
+std::string tokenCodeToString(const Token& token) {
+    if (token.type == TokenType::END_OF_FILE) {
+        return "(e,_)";
+    }
+    if (token.type == TokenType::ERROR) {
+        return "(err,_)";
+    }
+    return "(" + token.code + "," + std::to_string(token.value) + ")";
 }

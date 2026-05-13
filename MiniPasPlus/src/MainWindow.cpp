@@ -19,6 +19,8 @@ MainWindow::MainWindow(QWidget* parent)
       tabWidget_(nullptr),
       statusLabel_(nullptr),
       tokenTable_(nullptr),
+      keywordTable_(nullptr),
+      delimiterTable_(nullptr),
       identifierTable_(nullptr),
       constantTable_(nullptr),
       symbolTabWidget_(nullptr),
@@ -86,19 +88,27 @@ void MainWindow::buildUi() {
     tabWidget_ = new QTabWidget(splitter);
 
     tokenTable_ = new QTableWidget(tabWidget_);
-    setupTable(tokenTable_, {"序号", "类型", "单词", "行号", "列号"});
+    setupTable(tokenTable_, {"序号", "编码", "类型", "单词", "行号", "列号"});
     tabWidget_->addTab(createTablePage("词法分析阶段生成的 Token 序列", tokenTable_), "Token序列");
 
     auto* idConstPage = new QWidget(tabWidget_);
-    auto* idConstLayout = new QVBoxLayout(idConstPage);
+    auto* idConstLayout = new QGridLayout(idConstPage);
+    keywordTable_ = new QTableWidget(idConstPage);
+    delimiterTable_ = new QTableWidget(idConstPage);
     identifierTable_ = new QTableWidget(idConstPage);
     constantTable_ = new QTableWidget(idConstPage);
+    setupTable(keywordTable_, {"编号", "关键字"});
+    setupTable(delimiterTable_, {"编号", "界符"});
     setupTable(identifierTable_, {"序号", "标识符"});
-    setupTable(constantTable_, {"序号", "常数"});
-    idConstLayout->addWidget(new QLabel("词法分析阶段维护的标识符表", idConstPage));
-    idConstLayout->addWidget(identifierTable_);
-    idConstLayout->addWidget(new QLabel("词法分析阶段维护的常数表", idConstPage));
-    idConstLayout->addWidget(constantTable_);
+    setupTable(constantTable_, {"序号", "常数", "类型", "数值"});
+    idConstLayout->addWidget(new QLabel("关键字表 K", idConstPage), 0, 0);
+    idConstLayout->addWidget(new QLabel("界符表 P", idConstPage), 0, 1);
+    idConstLayout->addWidget(keywordTable_, 1, 0);
+    idConstLayout->addWidget(delimiterTable_, 1, 1);
+    idConstLayout->addWidget(new QLabel("标识符表 I", idConstPage), 2, 0);
+    idConstLayout->addWidget(new QLabel("常数表 C", idConstPage), 2, 1);
+    idConstLayout->addWidget(identifierTable_, 3, 0);
+    idConstLayout->addWidget(constantTable_, 3, 1);
     tabWidget_->addTab(idConstPage, "标识符与常数表");
 
     tabWidget_->addTab(createSymbolSystemPage(), "符号表");
@@ -205,6 +215,7 @@ void MainWindow::compileAndRun() {
 
     if (!result.success) {
         fillTokenTable(result);
+        fillKeywordAndDelimiterTables(result);
         fillIdentifierAndConstantTables(result);
         QString message = QString::fromStdString(result.errorMessage);
         setStatusError(message);
@@ -220,6 +231,8 @@ void MainWindow::compileAndRun() {
 
 void MainWindow::clearOutput() {
     tokenTable_->setRowCount(0);
+    keywordTable_->setRowCount(0);
+    delimiterTable_->setRowCount(0);
     identifierTable_->setRowCount(0);
     constantTable_->setRowCount(0);
     synblTable_->setRowCount(0);
@@ -236,6 +249,7 @@ void MainWindow::clearOutput() {
 
 void MainWindow::fillAllTables(const CompileResult& result) {
     fillTokenTable(result);
+    fillKeywordAndDelimiterTables(result);
     fillIdentifierAndConstantTables(result);
     fillSymbolTable(result);
     fillRecordTable(result);
@@ -248,10 +262,27 @@ void MainWindow::fillTokenTable(const CompileResult& result) {
     for (int row = 0; row < static_cast<int>(result.tokens.size()); ++row) {
         const Token& token = result.tokens[row];
         tokenTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
-        tokenTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(tokenTypeToString(token.type))));
-        tokenTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(token.lexeme)));
-        tokenTable_->setItem(row, 3, new QTableWidgetItem(QString::number(token.line)));
-        tokenTable_->setItem(row, 4, new QTableWidgetItem(QString::number(token.column)));
+        tokenTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(tokenCodeToString(token))));
+        tokenTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(tokenTypeToString(token.type))));
+        tokenTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(token.lexeme)));
+        tokenTable_->setItem(row, 4, new QTableWidgetItem(QString::number(token.line)));
+        tokenTable_->setItem(row, 5, new QTableWidgetItem(QString::number(token.column)));
+    }
+}
+
+void MainWindow::fillKeywordAndDelimiterTables(const CompileResult& result) {
+    keywordTable_->setRowCount(static_cast<int>(result.keywordTable.size()));
+    for (int row = 0; row < static_cast<int>(result.keywordTable.size()); ++row) {
+        const auto& entry = result.keywordTable[row];
+        keywordTable_->setItem(row, 0, new QTableWidgetItem(QString::number(entry.index)));
+        keywordTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(entry.word)));
+    }
+
+    delimiterTable_->setRowCount(static_cast<int>(result.delimiterTable.size()));
+    for (int row = 0; row < static_cast<int>(result.delimiterTable.size()); ++row) {
+        const auto& entry = result.delimiterTable[row];
+        delimiterTable_->setItem(row, 0, new QTableWidgetItem(QString::number(entry.index)));
+        delimiterTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(entry.symbol)));
     }
 }
 
@@ -262,10 +293,13 @@ void MainWindow::fillIdentifierAndConstantTables(const CompileResult& result) {
         identifierTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(result.identifierTable[row])));
     }
 
-    constantTable_->setRowCount(static_cast<int>(result.constantTable.size()));
-    for (int row = 0; row < static_cast<int>(result.constantTable.size()); ++row) {
+    constantTable_->setRowCount(static_cast<int>(result.constantEntries.size()));
+    for (int row = 0; row < static_cast<int>(result.constantEntries.size()); ++row) {
+        const auto& entry = result.constantEntries[row];
         constantTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
-        constantTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(result.constantTable[row])));
+        constantTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(entry.text)));
+        constantTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(entry.type)));
+        constantTable_->setItem(row, 3, new QTableWidgetItem(QString::number(entry.numberValue, 'g', 12)));
     }
 }
 

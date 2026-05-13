@@ -14,8 +14,11 @@ struct CompileResult {
     bool success = false;
     std::string errorMessage;
     std::vector<Token> tokens;
+    std::vector<KeywordEntry> keywordTable;
+    std::vector<DelimiterEntry> delimiterTable;
     std::vector<std::string> identifierTable;
     std::vector<std::string> constantTable;
+    std::vector<ConstantEntry> constantEntries;
     std::vector<Symbol> symbols;
     std::vector<RecordType> recordTypes;
     std::vector<ArrayType> arrayTypes;

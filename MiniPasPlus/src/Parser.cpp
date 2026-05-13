@@ -96,8 +96,7 @@ void Parser::parseArrayTypeDecl(const std::string& typeName) {
     consume(TokenType::KEYWORD, "array", "= 后面应是 array");
     consume(TokenType::DELIMITER, "[", "array 后面缺少 [");
     Token lowToken = consume(TokenType::CONSTANT, "", "数组下界应为整数常数");
-    consume(TokenType::DELIMITER, ".", "数组上下界之间缺少 ..");
-    consume(TokenType::DELIMITER, ".", "数组上下界之间缺少 ..");
+    consume(TokenType::DELIMITER, "..", "数组上下界之间缺少 ..");
     Token highToken = consume(TokenType::CONSTANT, "", "数组上界应为整数常数");
     consume(TokenType::DELIMITER, "]", "数组上界后缺少 ]");
     consume(TokenType::KEYWORD, "of", "数组声明缺少 of");
