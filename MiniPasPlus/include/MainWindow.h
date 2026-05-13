@@ -46,6 +46,9 @@ private:
     QTableWidget* targetCodeTable_;
     QTextEdit* runtimeText_;
     CompileResult lastResult_;
+    int highlightedTokenRow_ = -1;
+    QString highlightedLexeme_;
+    QString highlightedCellKey_;
 
     void buildUi();
     QWidget* createTablePage(const QString& description, QTableWidget* table);
@@ -80,6 +83,10 @@ private:
     int positionFromLineColumn(int line, int column) const;
     void highlightTokenAt(int line, int column, const QString& lexeme);
     void highlightWordOccurrences(const QString& word);
+    void highlightLexemeOccurrences(const QString& lexeme);
+    void connectTableHighlight(QTableWidget* table);
+    void onGenericTableCellClicked(QTableWidget* table, int row, int column);
+    bool highlightFromCellText(const QString& text);
     void clearSourceHighlight();
 };
 

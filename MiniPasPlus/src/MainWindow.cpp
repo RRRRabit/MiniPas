@@ -49,7 +49,8 @@ MainWindow::MainWindow(QWidget* parent)
       vallTable_(nullptr),
       quadrupleOptimizeTable_(nullptr),
       targetCodeTable_(nullptr),
-      runtimeText_(nullptr) {
+      runtimeText_(nullptr),
+      highlightedTokenRow_(-1) {
     buildUi();
 }
 
@@ -304,20 +305,60 @@ void MainWindow::buildUi() {
 
     connect(compileButton_, &QPushButton::clicked, this, [this]() { compileAndRun(); });
     connect(clearButton_, &QPushButton::clicked, this, [this]() { clearOutput(); });
-    connect(synblTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
-        const QTableWidgetItem* nameItem = synblTable_->item(row, 1);
-        if (!nameItem) {
+    connect(tokenTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
+        if (row < 0 || row >= static_cast<int>(lastResult_.tokens.size())) {
             return;
         }
-        highlightWordOccurrences(nameItem->text());
+        if (highlightedTokenRow_ == row) {
+            clearSourceHighlight();
+            highlightedTokenRow_ = -1;
+            return;
+        }
+        const Token& token = lastResult_.tokens[row];
+        if (token.lexeme.empty() || token.type == TokenType::END_OF_FILE) {
+            clearSourceHighlight();
+            highlightedTokenRow_ = -1;
+            return;
+        }
+        highlightTokenAt(token.line, token.column, QString::fromStdString(token.lexeme));
+        highlightedTokenRow_ = row;
     });
     connect(identifierTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
         const QTableWidgetItem* nameItem = identifierTable_->item(row, 1);
         if (!nameItem) {
             return;
         }
-        highlightWordOccurrences(nameItem->text());
+        highlightLexemeOccurrences(nameItem->text());
     });
+    connect(keywordTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
+        const QTableWidgetItem* item = keywordTable_->item(row, 1);
+        if (!item) {
+            return;
+        }
+        highlightLexemeOccurrences(item->text());
+    });
+    connect(delimiterTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
+        const QTableWidgetItem* item = delimiterTable_->item(row, 1);
+        if (!item) {
+            return;
+        }
+        highlightLexemeOccurrences(item->text());
+    });
+    connect(constantTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
+        const QTableWidgetItem* item = constantTable_->item(row, 1);
+        if (!item) {
+            return;
+        }
+        highlightLexemeOccurrences(item->text());
+    });
+
+    connectTableHighlight(synblTable_);
+    connectTableHighlight(typelTable_);
+    connectTableHighlight(rinflTable_);
+    connectTableHighlight(ainflTable_);
+    connectTableHighlight(conslTable_);
+    connectTableHighlight(lenlTable_);
+    connectTableHighlight(vallTable_);
 }
 
 QWidget* MainWindow::createSymbolSystemPage() {
@@ -398,6 +439,12 @@ void MainWindow::setupTable(QTableWidget* table, const QStringList& headers) {
     table->setColumnCount(headers.size());
     table->setHorizontalHeaderLabels(headers);
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    for (int i = 0; i < headers.size(); ++i) {
+        if (headers[i] == "序号") {
+            table->horizontalHeader()->setSectionResizeMode(i, QHeaderView::Fixed);
+            table->setColumnWidth(i, 48);
+        }
+    }
     table->verticalHeader()->setVisible(false);
     table->verticalHeader()->setDefaultSectionSize(22);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -455,6 +502,7 @@ void MainWindow::clearOutput() {
     targetCodeTable_->setRowCount(0);
     runtimeText_->clear();
     clearSourceHighlight();
+    highlightedTokenRow_ = -1;
     statusLabel_->setText("输出已清空");
     statusLabel_->setStyleSheet("color: #333333; font-weight: 600;");
 }
@@ -474,7 +522,7 @@ void MainWindow::fillTokenTable(const CompileResult& result) {
     tokenTable_->setRowCount(static_cast<int>(result.tokens.size()));
     for (int row = 0; row < static_cast<int>(result.tokens.size()); ++row) {
         const Token& token = result.tokens[row];
-        tokenTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        tokenTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         tokenTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(tokenCodeToString(token))));
     }
 }
@@ -498,14 +546,14 @@ void MainWindow::fillKeywordAndDelimiterTables(const CompileResult& result) {
 void MainWindow::fillIdentifierAndConstantTables(const CompileResult& result) {
     identifierTable_->setRowCount(static_cast<int>(result.identifierTable.size()));
     for (int row = 0; row < static_cast<int>(result.identifierTable.size()); ++row) {
-        identifierTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        identifierTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         identifierTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(result.identifierTable[row])));
     }
 
     constantTable_->setRowCount(static_cast<int>(result.constantEntries.size()));
     for (int row = 0; row < static_cast<int>(result.constantEntries.size()); ++row) {
         const auto& entry = result.constantEntries[row];
-        constantTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        constantTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         constantTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(entry.text)));
         constantTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(entry.type)));
     }
@@ -526,7 +574,7 @@ void MainWindow::fillSynblTable(const CompileResult& result) {
     synblTable_->setRowCount(static_cast<int>(result.symbols.size()));
     for (int row = 0; row < static_cast<int>(result.symbols.size()); ++row) {
         const Symbol& symbol = result.symbols[row];
-        synblTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        synblTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         synblTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(symbol.name)));
         synblTable_->setItem(row, 2, new QTableWidgetItem(synblTypeRef(symbol)));
         QString cat = synblCategory(symbol);
@@ -548,7 +596,7 @@ void MainWindow::fillTypelTable(const CompileResult& result) {
     typelTable_->setRowCount(1 + static_cast<int>(result.recordTypes.size()) + static_cast<int>(result.arrayTypes.size()));
 
     int row = 0;
-    typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+    typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
     typelTable_->setItem(row, 1, new QTableWidgetItem("ircb"));
     typelTable_->setItem(row, 2, new QTableWidgetItem("basic"));
     typelTable_->setItem(row, 3, new QTableWidgetItem(""));
@@ -556,7 +604,7 @@ void MainWindow::fillTypelTable(const CompileResult& result) {
 
     int rinflStart = 0;
     for (const auto& record : result.recordTypes) {
-        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         typelTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
         typelTable_->setItem(row, 2, new QTableWidgetItem("record"));
         typelTable_->setItem(row, 3, new QTableWidgetItem(QString("RINFL+%1").arg(rinflStart)));
@@ -566,7 +614,7 @@ void MainWindow::fillTypelTable(const CompileResult& result) {
 
     for (int i = 0; i < static_cast<int>(result.arrayTypes.size()); ++i) {
         const auto& array = result.arrayTypes[i];
-        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         typelTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
         typelTable_->setItem(row, 2, new QTableWidgetItem("array"));
         typelTable_->setItem(row, 3, new QTableWidgetItem(QString("AINFL+%1").arg(i)));
@@ -584,7 +632,7 @@ void MainWindow::fillRinflTable(const CompileResult& result) {
     int row = 0;
     for (const auto& record : result.recordTypes) {
         for (const auto& field : record.fields) {
-            rinflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+            rinflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
             rinflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
             rinflTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(field.name)));
             rinflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(field.offset)));
@@ -599,7 +647,7 @@ void MainWindow::fillAinflTable(const CompileResult& result) {
     ainflTable_->setRowCount(static_cast<int>(result.arrayTypes.size()));
     for (int row = 0; row < static_cast<int>(result.arrayTypes.size()); ++row) {
         const auto& array = result.arrayTypes[row];
-        ainflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        ainflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         ainflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
         ainflTable_->setItem(row, 2, new QTableWidgetItem(QString::number(array.low)));
         ainflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(array.high)));
@@ -636,6 +684,7 @@ void MainWindow::fillPfinflTable(const CompileResult& result) {
         funcTable->setItem(0, 2, new QTableWidgetItem(QString::number(function.paramCount)));
         funcTable->setItem(0, 3, new QTableWidgetItem(QString::number(function.entryQuad)));
         funcTable->setItem(0, 4, new QTableWidgetItem(QString("PARAM+%1").arg(function.paramStart)));
+        connectTableHighlight(funcTable);
         pfinflLayout_->addWidget(funcTable);
 
         auto* paramTable = new QTableWidget(pfinflContainer_);
@@ -650,12 +699,13 @@ void MainWindow::fillPfinflTable(const CompileResult& result) {
             pseudo.address = param.offset;
             pseudo.size = param.size;
 
-            paramTable->setItem(i, 0, new QTableWidgetItem(QString::number(i)));
+            paramTable->setItem(i, 0, new QTableWidgetItem(QString::number(i + 1)));
             paramTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(param.name)));
             paramTable->setItem(i, 2, new QTableWidgetItem(synblTypeRef(pseudo)));
             paramTable->setItem(i, 3, new QTableWidgetItem(synblCategory(pseudo)));
             paramTable->setItem(i, 4, new QTableWidgetItem(QString("(%1,%2)").arg(2).arg(param.offset)));
         }
+        connectTableHighlight(paramTable);
         pfinflLayout_->addWidget(paramTable);
 
         if (fi + 1 < static_cast<int>(result.functionTable.size())) {
@@ -692,20 +742,20 @@ void MainWindow::fillLenlTable(const CompileResult& result) {
 
     int row = 0;
     for (; row < 4; ++row) {
-        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         lenlTable_->setItem(row, 1, new QTableWidgetItem(basicTypes[row][0]));
         lenlTable_->setItem(row, 2, new QTableWidgetItem(basicTypes[row][1]));
     }
 
     for (const auto& record : result.recordTypes) {
-        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         lenlTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
         lenlTable_->setItem(row, 2, new QTableWidgetItem(QString::number(record.totalSize)));
         ++row;
     }
 
     for (const auto& array : result.arrayTypes) {
-        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
         lenlTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
         lenlTable_->setItem(row, 2, new QTableWidgetItem(QString::number(array.totalSize)));
         ++row;
@@ -908,6 +958,7 @@ void MainWindow::fillRuntimeText(const CompileResult& result) {
 
 void MainWindow::fillTargetCodeTable(const CompileResult& result) {
     targetCodeTable_->setRowCount(static_cast<int>(result.targetTrace.size()));
+    targetCodeTable_->clearSpans();
     for (int row = 0; row < static_cast<int>(result.targetTrace.size()); ++row) {
         const TargetTraceItem& t = result.targetTrace[row];
         targetCodeTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(t.basicBlock)));
@@ -915,6 +966,30 @@ void MainWindow::fillTargetCodeTable(const CompileResult& result) {
         targetCodeTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(t.targetCode)));
         targetCodeTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(t.rdl)));
         targetCodeTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(t.sem)));
+    }
+
+    // 合并“基本块”列中连续相同的块号（例如全是 B1 时合并成一个单元格）。
+    int start = 0;
+    while (start < targetCodeTable_->rowCount()) {
+        const QTableWidgetItem* startItem = targetCodeTable_->item(start, 0);
+        const QString block = startItem ? startItem->text() : QString();
+        int end = start + 1;
+        while (end < targetCodeTable_->rowCount()) {
+            const QTableWidgetItem* cur = targetCodeTable_->item(end, 0);
+            const QString curBlock = cur ? cur->text() : QString();
+            if (curBlock != block) {
+                break;
+            }
+            ++end;
+        }
+        const int spanRows = end - start;
+        if (spanRows > 1) {
+            targetCodeTable_->setSpan(start, 0, spanRows, 1);
+            for (int r = start + 1; r < end; ++r) {
+                targetCodeTable_->setItem(r, 0, new QTableWidgetItem(""));
+            }
+        }
+        start = end;
     }
 }
 
@@ -1057,7 +1132,10 @@ void MainWindow::highlightTokenAt(int line, int column, const QString& lexeme) {
     sel.format.setBackground(QColor("#ffe082"));
     sel.format.setForeground(QColor("#111827"));
     sourceEdit_->setExtraSelections({sel});
-    sourceEdit_->setTextCursor(cursor);
+    QTextCursor viewCursor = cursor;
+    viewCursor.clearSelection();
+    sourceEdit_->setTextCursor(viewCursor);
+    highlightedLexeme_.clear();
 }
 
 void MainWindow::highlightWordOccurrences(const QString& word) {
@@ -1084,10 +1162,141 @@ void MainWindow::highlightWordOccurrences(const QString& word) {
 
     sourceEdit_->setExtraSelections(selections);
     if (!selections.isEmpty()) {
-        sourceEdit_->setTextCursor(selections.first().cursor);
+        QTextCursor viewCursor = selections.first().cursor;
+        viewCursor.clearSelection();
+        sourceEdit_->setTextCursor(viewCursor);
     }
+    highlightedLexeme_.clear();
+}
+
+void MainWindow::highlightLexemeOccurrences(const QString& lexeme) {
+    if (lexeme.isEmpty()) {
+        clearSourceHighlight();
+        return;
+    }
+
+    // 同一词素再次点击时取消高亮。
+    if (highlightedLexeme_ == lexeme) {
+        clearSourceHighlight();
+        return;
+    }
+
+    clearSourceHighlight();
+    QList<QTextEdit::ExtraSelection> selections;
+    QTextDocument* doc = sourceEdit_->document();
+    QTextCursor cursor(doc);
+
+    const bool isWordLike = QRegularExpression("^[A-Za-z][A-Za-z0-9]*$").match(lexeme).hasMatch();
+    QRegularExpression re(
+        isWordLike
+            ? QString("\\b%1\\b").arg(QRegularExpression::escape(lexeme))
+            : QRegularExpression::escape(lexeme)
+    );
+
+    while (!cursor.isNull() && !cursor.atEnd()) {
+        cursor = doc->find(re, cursor);
+        if (!cursor.isNull()) {
+            QTextEdit::ExtraSelection sel;
+            sel.cursor = cursor;
+            sel.format.setBackground(QColor("#c8e6c9"));
+            sel.format.setForeground(QColor("#0f172a"));
+            selections.append(sel);
+        }
+    }
+
+    sourceEdit_->setExtraSelections(selections);
+    if (!selections.isEmpty()) {
+        QTextCursor viewCursor = selections.first().cursor;
+        viewCursor.clearSelection();
+        sourceEdit_->setTextCursor(viewCursor);
+        highlightedLexeme_ = lexeme;
+    } else {
+        highlightedLexeme_.clear();
+    }
+}
+
+void MainWindow::connectTableHighlight(QTableWidget* table) {
+    if (table == nullptr) {
+        return;
+    }
+    connect(table, &QTableWidget::cellClicked, this, [this, table](int row, int column) {
+        onGenericTableCellClicked(table, row, column);
+    });
+}
+
+void MainWindow::onGenericTableCellClicked(QTableWidget* table, int row, int column) {
+    if (table == nullptr || row < 0 || column < 0) {
+        return;
+    }
+    const QTableWidgetItem* item = table->item(row, column);
+    if (item == nullptr) {
+        return;
+    }
+    const QString text = item->text().trimmed();
+    if (text.isEmpty()) {
+        return;
+    }
+
+    const QString key = QString("%1|%2|%3|%4")
+        .arg(reinterpret_cast<quintptr>(table))
+        .arg(row)
+        .arg(column)
+        .arg(text);
+    if (highlightedCellKey_ == key) {
+        clearSourceHighlight();
+        return;
+    }
+
+    if (highlightFromCellText(text)) {
+        highlightedCellKey_ = key;
+    } else {
+        clearSourceHighlight();
+    }
+}
+
+bool MainWindow::highlightFromCellText(const QString& text) {
+    const QString source = sourceEdit_->toPlainText();
+    if (source.isEmpty()) {
+        return false;
+    }
+
+    auto hasWordMatch = [&source](const QString& lexeme) {
+        QRegularExpression re(QString("\\b%1\\b").arg(QRegularExpression::escape(lexeme)));
+        return re.match(source).hasMatch();
+    };
+    auto hasExactMatch = [&source](const QString& lexeme) {
+        QRegularExpression re(QRegularExpression::escape(lexeme));
+        return re.match(source).hasMatch();
+    };
+
+    const QRegularExpression tokenRe("([A-Za-z][A-Za-z0-9]*|\\d+(?:\\.\\d+)?)");
+    QRegularExpressionMatchIterator it = tokenRe.globalMatch(text);
+    while (it.hasNext()) {
+        const QString candidate = it.next().captured(1);
+        if (candidate.isEmpty()) {
+            continue;
+        }
+        if (hasWordMatch(candidate)) {
+            highlightedLexeme_.clear();
+            highlightLexemeOccurrences(candidate);
+            return !sourceEdit_->extraSelections().isEmpty();
+        }
+    }
+
+    if (text.size() <= 24 && hasExactMatch(text)) {
+        highlightedLexeme_.clear();
+        highlightLexemeOccurrences(text);
+        return !sourceEdit_->extraSelections().isEmpty();
+    }
+    return false;
 }
 
 void MainWindow::clearSourceHighlight() {
     sourceEdit_->setExtraSelections({});
+    QTextCursor cursor = sourceEdit_->textCursor();
+    cursor.clearSelection();
+    sourceEdit_->setTextCursor(cursor);
+    highlightedTokenRow_ = -1;
+    highlightedLexeme_.clear();
+    highlightedCellKey_.clear();
 }
