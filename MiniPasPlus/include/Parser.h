@@ -61,10 +61,12 @@ private:
     void parseStmtList();
     void parseStmt();
     void parseAssignStmt();
+    void parseCallStmt();
     void parseWhileStmt();
     void parseIfStmt();
     ExprResult parseCondition();
     std::string parseLeftValue();
+    ExprResult parseFunctionCall(const Token& functionToken);
     ExprResult parseExpression();
     ExprResult parseTerm();
     ExprResult parseFactor();

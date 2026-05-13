@@ -192,6 +192,8 @@ void Parser::parseFunctionDecl() {
     symbolTable_.add({functionName.lexeme, returnType, "function", -1, typeTable_.getTypeSize(returnType)});
     parseVarDeclPart(false, functionName.lexeme);
     parseCompoundStmt();
+    // 函数默认在函数体末尾返回函数名对应的值（Pascal 风格：通过给函数名赋值返回）。
+    emit("ret", functionName.lexeme, "_", "_");
     consume(TokenType::DELIMITER, ";", "函数体后缺少 ;");
 
     FunctionInfo info;
@@ -350,6 +352,13 @@ void Parser::parseStmt() {
         parseWhileStmt();
         return;
     }
+    if (check(TokenType::IDENTIFIER)
+        && current_ + 1 < tokens_.size()
+        && tokens_[current_ + 1].type == TokenType::DELIMITER
+        && tokens_[current_ + 1].lexeme == "(") {
+        parseCallStmt();
+        return;
+    }
     parseAssignStmt();
 }
 
@@ -363,6 +372,11 @@ void Parser::parseAssignStmt() {
         errorAtCurrent("赋值类型不兼容: " + targetType + " := " + expr.type);
     }
     emit(":=", expr.place, "_", leftValue);
+}
+
+void Parser::parseCallStmt() {
+    Token functionToken = consumeIdentifier("函数调用缺少函数名");
+    parseFunctionCall(functionToken);
 }
 
 void Parser::parseWhileStmt() {
@@ -471,6 +485,9 @@ Parser::ExprResult Parser::parseTerm() {
 Parser::ExprResult Parser::parseFactor() {
     if (check(TokenType::IDENTIFIER)) {
         Token base = consumeIdentifier("表达式中缺少标识符");
+        if (check(TokenType::DELIMITER, "(")) {
+            return parseFunctionCall(base);
+        }
         if (match(TokenType::DELIMITER, "[")) {
             ExprResult indexExpr = parseExpression();
             consume(TokenType::DELIMITER, "]", "数组下标后缺少 ]");
@@ -513,6 +530,55 @@ Parser::ExprResult Parser::parseFactor() {
 
     errorAtCurrent("表达式因子应为变量、常数或括号表达式");
     return {"", ""};
+}
+
+Parser::ExprResult Parser::parseFunctionCall(const Token& functionToken) {
+    const SymbolEntry* symbol = symbolTable_.find(functionToken.lexeme);
+    if (symbol == nullptr || symbol->kind != "function") {
+        errorAtToken(functionToken, "调用了未声明函数: " + functionToken.lexeme);
+    }
+
+    consume(TokenType::DELIMITER, "(", "函数调用缺少 (");
+    std::vector<ExprResult> args;
+    if (!check(TokenType::DELIMITER, ")")) {
+        args.push_back(parseExpression());
+        while (match(TokenType::DELIMITER, ",")) {
+            args.push_back(parseExpression());
+        }
+    }
+    consume(TokenType::DELIMITER, ")", "函数调用缺少 )");
+
+    std::vector<ParameterInfo> params;
+    for (const auto& p : parameterInfos_) {
+        if (p.functionName == functionToken.lexeme) {
+            params.push_back(p);
+        }
+    }
+    std::sort(params.begin(), params.end(), [](const ParameterInfo& a, const ParameterInfo& b) {
+        return a.offset < b.offset;
+    });
+
+    if (static_cast<int>(args.size()) != static_cast<int>(params.size())) {
+        errorAtToken(functionToken, "函数 " + functionToken.lexeme + " 实参数量不匹配");
+    }
+
+    for (int i = 0; i < static_cast<int>(args.size()); ++i) {
+        if (params[i].passMode == "vn") {
+            errorAtToken(functionToken, "当前仅支持值参调用，函数 " + functionToken.lexeme + " 含 var 参数");
+        }
+        if (!canAssign(params[i].type, args[i].type)) {
+            errorAtToken(functionToken, "函数 " + functionToken.lexeme + " 第 " + std::to_string(i + 1) + " 个参数类型不匹配");
+        }
+        emit("param", args[i].place, "vf", "_");
+    }
+
+    std::string retType = symbol->typeName;
+    std::string resultPlace = "_";
+    if (retType != "void" && !retType.empty()) {
+        resultPlace = newTemp(retType);
+    }
+    emit("call", functionToken.lexeme, std::to_string(args.size()), resultPlace);
+    return {resultPlace, retType};
 }
 
 const Token& Parser::peek() const {

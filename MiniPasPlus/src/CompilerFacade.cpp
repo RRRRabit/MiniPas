@@ -556,6 +556,7 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
     std::string rdl; // R中当前变量名，空表示空闲
     std::vector<int> sem;
     int pendingWhMark = -1;
+    int nextArgSlot = 0;
 
     auto emit = [&](const std::string& op, const std::string& arg, int target = -1) {
         insts.push_back({op, arg, target});
@@ -577,6 +578,8 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
             if (in.op == "FJ R" || in.op == "JMP _") {
                 int t = (in.target >= 0 ? in.target + 1 : i + 1);
                 s += in.op + ", " + circledNumber(t);
+            } else if (in.op == "RET") {
+                s += "RET";
             } else {
                 s += in.op + ", " + in.arg;
             }
@@ -690,6 +693,22 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
             if (doPos >= 0) {
                 insts[doPos].target = j + 1;
             }
+        } else if (q.op == "param") {
+            emit("ST", q.arg1 + ", ARG" + std::to_string(nextArgSlot));
+            ++nextArgSlot;
+        } else if (q.op == "call") {
+            emit("CALL", q.arg1);
+            if (q.result != "_" && !q.result.empty()) {
+                emit("LD R", "RET");
+                emit("ST R", q.result);
+                rdl.clear();
+            }
+            nextArgSlot = 0;
+        } else if (q.op == "ret") {
+            emit("LD R", q.arg1);
+            emit("ST R", "RET");
+            emit("RET", "_");
+            rdl.clear();
         }
 
         if (blockEnds.find(i) != blockEnds.end()) {
@@ -738,6 +757,8 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
         if (in.op == "FJ R" || in.op == "JMP _") {
             int t = in.target >= 0 ? (in.target + 1) : (i + 1);
             line += in.op + ", " + circledNumber(t);
+        } else if (in.op == "RET") {
+            line += "RET";
         } else {
             line += in.op + ", " + in.arg;
         }

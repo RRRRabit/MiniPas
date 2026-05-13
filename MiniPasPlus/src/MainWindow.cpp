@@ -16,6 +16,7 @@
 #include <QTextDocument>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <map>
 #include <set>
 #include <utility>
@@ -40,7 +41,9 @@ MainWindow::MainWindow(QWidget* parent)
       rinflTable_(nullptr),
       ainflTable_(nullptr),
       pfinflTable_(nullptr),
-      paramTable_(nullptr),
+      pfinflParamTable_(nullptr),
+      pfinflContainer_(nullptr),
+      pfinflLayout_(nullptr),
       conslTable_(nullptr),
       lenlTable_(nullptr),
       vallTable_(nullptr),
@@ -136,16 +139,17 @@ void MainWindow::buildUi() {
         {
             "5) 函数声明 + 主程序",
             "PROGRAM demofunction\n"
-            "FUNCTION f(VAR m: INTEGER): INTEGER;\n"
-            "VAR n: INTEGER;\n"
+            "FUNCTION add(a: INTEGER; b: INTEGER): INTEGER;\n"
+            "VAR t: INTEGER;\n"
             "BEGIN\n"
-            "    n := m + 1;\n"
-            "    m := n\n"
+            "    t := a + b;\n"
+            "    add := t\n"
             "END;\n"
-            "VAR x, y: INTEGER;\n"
+            "VAR x, y, z: INTEGER;\n"
             "BEGIN\n"
             "    x := 3;\n"
-            "    y := x + 2\n"
+            "    y := 4;\n"
+            "    z := add(x, y)\n"
             "END."
         },
         {
@@ -340,13 +344,18 @@ QWidget* MainWindow::createSymbolSystemPage() {
     setupTable(ainflTable_, {"序号", "ArrayName", "LOW", "UP", "CTP", "CLEN"});
     symbolTabWidget_->addTab(createTablePage("AINFL 数组表：保存数组上下界、成分类型和成分长度", ainflTable_), "AINFL数组表");
 
-    pfinflTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(pfinflTable_, {"序号", "Name", "LEVEL", "OFF", "FN", "ENTRY", "PARAM"});
-    symbolTabWidget_->addTab(createTablePage("PFINFL 函数表：保存函数层次、参数入口和入口四元式", pfinflTable_), "PFINFL函数表");
-
-    paramTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(paramTable_, {"序号", "Function", "NAME", "TYPEL", "CAT", "INFO"});
-    symbolTabWidget_->addTab(createTablePage("PARAM 形参表：表项规则与 SYNBL 保持一致", paramTable_), "PARAM形参表");
+    {
+        auto* pPage = new QWidget(symbolTabWidget_);
+        auto* pLayout = new QVBoxLayout(pPage);
+        pLayout->setSpacing(4);
+        pLayout->setContentsMargins(6, 6, 6, 6);
+        pfinflContainer_ = new QWidget(pPage);
+        pfinflLayout_ = new QVBoxLayout(pfinflContainer_);
+        pfinflLayout_->setSpacing(6);
+        pfinflLayout_->setContentsMargins(0, 0, 0, 0);
+        pLayout->addWidget(pfinflContainer_);
+        symbolTabWidget_->addTab(pPage, "PFINFL函数表");
+    }
 
     conslTable_ = new QTableWidget(symbolTabWidget_);
     setupTable(conslTable_, {"序号", "Text", "Type", "Value"});
@@ -430,8 +439,15 @@ void MainWindow::clearOutput() {
     typelTable_->setRowCount(0);
     rinflTable_->setRowCount(0);
     ainflTable_->setRowCount(0);
-    pfinflTable_->setRowCount(0);
-    paramTable_->setRowCount(0);
+    if (pfinflLayout_ != nullptr) {
+        QLayoutItem* child = nullptr;
+        while ((child = pfinflLayout_->takeAt(0)) != nullptr) {
+            if (child->widget() != nullptr) {
+                child->widget()->deleteLater();
+            }
+            delete child;
+        }
+    }
     conslTable_->setRowCount(0);
     lenlTable_->setRowCount(0);
     vallTable_->setRowCount(0);
@@ -444,6 +460,7 @@ void MainWindow::clearOutput() {
 }
 
 void MainWindow::fillAllTables(const CompileResult& result) {
+    lastResult_ = result;
     fillTokenTable(result);
     fillKeywordAndDelimiterTables(result);
     fillIdentifierAndConstantTables(result);
@@ -500,7 +517,6 @@ void MainWindow::fillSymbolTable(const CompileResult& result) {
     fillRinflTable(result);
     fillAinflTable(result);
     fillPfinflTable(result);
-    fillParamTable(result);
     fillConslTable(result);
     fillLenlTable(result);
     fillVallTable(result);
@@ -593,38 +609,64 @@ void MainWindow::fillAinflTable(const CompileResult& result) {
 }
 
 void MainWindow::fillPfinflTable(const CompileResult& result) {
-    pfinflTable_->setRowCount(static_cast<int>(result.functionTable.size()));
-    for (int row = 0; row < static_cast<int>(result.functionTable.size()); ++row) {
-        const auto& function = result.functionTable[row];
-        pfinflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
-        pfinflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(function.name)));
-        pfinflTable_->setItem(row, 2, new QTableWidgetItem(QString::number(function.level)));
-        pfinflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(function.offset)));
-        pfinflTable_->setItem(row, 4, new QTableWidgetItem(QString::number(function.paramCount)));
-        pfinflTable_->setItem(row, 5, new QTableWidgetItem(QString::number(function.entryQuad)));
-        pfinflTable_->setItem(row, 6, new QTableWidgetItem(QString("PARAM+%1").arg(function.paramStart)));
+    if (pfinflLayout_ == nullptr) {
+        return;
     }
-}
 
-void MainWindow::fillParamTable(const CompileResult& result) {
-    paramTable_->setRowCount(static_cast<int>(result.parameterTable.size()));
-    for (int row = 0; row < static_cast<int>(result.parameterTable.size()); ++row) {
-        const auto& param = result.parameterTable[row];
-        paramTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
-        paramTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(param.functionName)));
-        paramTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(param.name)));
-        Symbol pseudo;
-        pseudo.name = param.name;
-        pseudo.typeName = param.type;
-        pseudo.kind = (param.passMode == "vn") ? "var parameter" : "parameter";
-        pseudo.address = param.offset;
-        pseudo.size = param.size;
-
-        paramTable_->setItem(row, 3, new QTableWidgetItem(synblTypeRef(pseudo)));
-        QString cat = synblCategory(pseudo);
-        paramTable_->setItem(row, 4, new QTableWidgetItem(cat));
-        paramTable_->setItem(row, 5, new QTableWidgetItem(QString("(%1,%2)").arg(2).arg(param.offset)));
+    QLayoutItem* child = nullptr;
+    while ((child = pfinflLayout_->takeAt(0)) != nullptr) {
+        if (child->widget() != nullptr) {
+            child->widget()->deleteLater();
+        }
+        delete child;
     }
+
+    for (int fi = 0; fi < static_cast<int>(result.functionTable.size()); ++fi) {
+        const auto& function = result.functionTable[fi];
+
+        auto* title = new QLabel(QString("函数 %1").arg(QString::fromStdString(function.name)), pfinflContainer_);
+        title->setStyleSheet("font-weight: 600; color: #334155; padding: 1px 0;");
+        pfinflLayout_->addWidget(title);
+
+        auto* funcTable = new QTableWidget(pfinflContainer_);
+        setupTable(funcTable, {"层次", "区距", "参数个数", "ENTRY", "指针"});
+        funcTable->setRowCount(1);
+        funcTable->setItem(0, 0, new QTableWidgetItem(QString::number(function.level)));
+        funcTable->setItem(0, 1, new QTableWidgetItem(QString::number(function.offset)));
+        funcTable->setItem(0, 2, new QTableWidgetItem(QString::number(function.paramCount)));
+        funcTable->setItem(0, 3, new QTableWidgetItem(QString::number(function.entryQuad)));
+        funcTable->setItem(0, 4, new QTableWidgetItem(QString("PARAM+%1").arg(function.paramStart)));
+        pfinflLayout_->addWidget(funcTable);
+
+        auto* paramTable = new QTableWidget(pfinflContainer_);
+        setupTable(paramTable, {"序号", "NAME", "TYPEL", "CAT", "INFO"});
+        paramTable->setRowCount(function.paramCount);
+        for (int i = 0; i < function.paramCount; ++i) {
+            const auto& param = result.parameterTable[function.paramStart + i];
+            Symbol pseudo;
+            pseudo.name = param.name;
+            pseudo.typeName = param.type;
+            pseudo.kind = (param.passMode == "vn") ? "var parameter" : "parameter";
+            pseudo.address = param.offset;
+            pseudo.size = param.size;
+
+            paramTable->setItem(i, 0, new QTableWidgetItem(QString::number(i)));
+            paramTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(param.name)));
+            paramTable->setItem(i, 2, new QTableWidgetItem(synblTypeRef(pseudo)));
+            paramTable->setItem(i, 3, new QTableWidgetItem(synblCategory(pseudo)));
+            paramTable->setItem(i, 4, new QTableWidgetItem(QString("(%1,%2)").arg(2).arg(param.offset)));
+        }
+        pfinflLayout_->addWidget(paramTable);
+
+        if (fi + 1 < static_cast<int>(result.functionTable.size())) {
+            auto* sep = new QFrame(pfinflContainer_);
+            sep->setFrameShape(QFrame::HLine);
+            sep->setFrameShadow(QFrame::Sunken);
+            pfinflLayout_->addWidget(sep);
+        }
+    }
+
+    pfinflLayout_->addStretch(1);
 }
 
 void MainWindow::fillConslTable(const CompileResult& result) {

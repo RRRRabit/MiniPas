@@ -10,6 +10,7 @@
 #include <QTableWidget>
 #include <QTabWidget>
 #include <QTextEdit>
+#include <QVBoxLayout>
 
 // Qt Widgets 主窗口：只负责界面展示，不包含编译器核心逻辑。
 class MainWindow : public QMainWindow {
@@ -35,13 +36,16 @@ private:
     QTableWidget* rinflTable_;
     QTableWidget* ainflTable_;
     QTableWidget* pfinflTable_;
-    QTableWidget* paramTable_;
+    QTableWidget* pfinflParamTable_;
+    QWidget* pfinflContainer_;
+    QVBoxLayout* pfinflLayout_;
     QTableWidget* conslTable_;
     QTableWidget* lenlTable_;
     QTableWidget* vallTable_;
     QTableWidget* quadrupleOptimizeTable_;
     QTableWidget* targetCodeTable_;
     QTextEdit* runtimeText_;
+    CompileResult lastResult_;
 
     void buildUi();
     QWidget* createTablePage(const QString& description, QTableWidget* table);
@@ -60,7 +64,6 @@ private:
     void fillRinflTable(const CompileResult& result);
     void fillAinflTable(const CompileResult& result);
     void fillPfinflTable(const CompileResult& result);
-    void fillParamTable(const CompileResult& result);
     void fillConslTable(const CompileResult& result);
     void fillLenlTable(const CompileResult& result);
     void fillVallTable(const CompileResult& result);
