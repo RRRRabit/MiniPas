@@ -25,13 +25,19 @@ private:
     QTableWidget* tokenTable_;
     QTableWidget* identifierTable_;
     QTableWidget* constantTable_;
-    QTableWidget* symbolTable_;
+    QTabWidget* symbolTabWidget_;
+    QTableWidget* synblTable_;
+    QTableWidget* typelTable_;
+    QTableWidget* rinflTable_;
+    QTableWidget* ainflTable_;
+    QTableWidget* lenlTable_;
     QTableWidget* recordTable_;
     QTableWidget* quadrupleTable_;
     QTextEdit* runtimeText_;
 
     void buildUi();
     QWidget* createTablePage(const QString& description, QTableWidget* table);
+    QWidget* createSymbolSystemPage();
     QWidget* createRuntimePage(const QString& description);
     void setupTable(QTableWidget* table, const QStringList& headers);
     void compileAndRun();
@@ -40,6 +46,11 @@ private:
     void fillTokenTable(const CompileResult& result);
     void fillIdentifierAndConstantTables(const CompileResult& result);
     void fillSymbolTable(const CompileResult& result);
+    void fillSynblTable(const CompileResult& result);
+    void fillTypelTable(const CompileResult& result);
+    void fillRinflTable(const CompileResult& result);
+    void fillAinflTable(const CompileResult& result);
+    void fillLenlTable(const CompileResult& result);
     void fillRecordTable(const CompileResult& result);
     void fillQuadrupleTable(const CompileResult& result);
     void fillRuntimeText(const CompileResult& result);

@@ -23,7 +23,17 @@ struct RecordType {
     int totalSize = 0;
 };
 
-// 类型表：保存基本类型长度和用户通过 type 声明的 record 类型。
+// 数组类型信息：保存下界、上界、成分类型和总长度。
+struct ArrayType {
+    std::string name;
+    int low = 0;
+    int high = 0;
+    std::string elementType;
+    int elementSize = 0;
+    int totalSize = 0;
+};
+
+// 类型表：保存基本类型长度和用户通过 type 声明的 record/array 类型。
 class TypeTable {
 public:
     // 添加 record 类型，并自动计算每个字段的 offset 和 size。
@@ -31,6 +41,12 @@ public:
 
     // 查询 record 类型；找不到时返回 nullptr。
     const RecordType* findRecordType(const std::string& name) const;
+
+    // 添加数组类型，并自动计算数组总长度。
+    void addArrayType(const std::string& name, int low, int high, const std::string& elementType);
+
+    // 查询数组类型；找不到时返回 nullptr。
+    const ArrayType* findArrayType(const std::string& name) const;
 
     // 查询 record 字段；找不到 record 或字段时返回 nullptr。
     const FieldInfo* findField(const std::string& recordName, const std::string& fieldName) const;
@@ -42,9 +58,11 @@ public:
     void printTypeTable(std::ostream& out) const;
 
     const std::vector<RecordType>& recordTypes() const;
+    const std::vector<ArrayType>& arrayTypes() const;
 
 private:
     std::vector<RecordType> recordTypes_;
+    std::vector<ArrayType> arrayTypes_;
 };
 
 #endif

@@ -33,6 +33,7 @@ private:
     bool isAtEnd() const;
     void skipWhitespace();
     void addUnique(std::vector<std::string>& table, const std::string& value);
+    std::string toLower(const std::string& text) const;
 };
 
 #endif

@@ -32,6 +32,7 @@ CompileResult CompilerFacade::compileAndRun(const std::string& sourceCode) {
 
         finalResult.symbols = parseResult.symbols;
         finalResult.recordTypes = parseResult.recordTypes;
+        finalResult.arrayTypes = parseResult.arrayTypes;
         finalResult.quadruples = parseResult.quadruples;
 
         // 3. 解释执行：运行四元式，得到最终变量值。
@@ -47,4 +48,3 @@ CompileResult CompilerFacade::compileAndRun(const std::string& sourceCode) {
 
     return finalResult;
 }
-

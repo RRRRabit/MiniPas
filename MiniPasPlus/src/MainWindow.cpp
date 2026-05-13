@@ -21,7 +21,12 @@ MainWindow::MainWindow(QWidget* parent)
       tokenTable_(nullptr),
       identifierTable_(nullptr),
       constantTable_(nullptr),
-      symbolTable_(nullptr),
+      symbolTabWidget_(nullptr),
+      synblTable_(nullptr),
+      typelTable_(nullptr),
+      rinflTable_(nullptr),
+      ainflTable_(nullptr),
+      lenlTable_(nullptr),
       recordTable_(nullptr),
       quadrupleTable_(nullptr),
       runtimeText_(nullptr) {
@@ -48,17 +53,25 @@ void MainWindow::buildUi() {
     sourceEdit_ = new QPlainTextEdit(sourceGroup);
     sourceEdit_->setFont(QFont("Consolas", 11));
     sourceEdit_->setPlainText(
-        "program test\n"
-        "type Student = record\n"
-        "    age: integer;\n"
-        "    score: integer;\n"
-        "end;\n"
+        "PROGRAM test\n"
+        "TYPE re = RECORD\n"
+        "    a: REAL;\n"
+        "    b: CHAR;\n"
+        "END;\n"
+        "arr = ARRAY[1..10] OF re;\n"
         "\n"
-        "var s: Student;\n"
-        "begin\n"
-        "    s.age := 18;\n"
-        "    s.score := s.age + 80\n"
-        "end.");
+        "FUNCTION f(VAR m: BOOLEAN): INTEGER;\n"
+        "VAR n: INTEGER;\n"
+        "BEGIN\n"
+        "END;\n"
+        "\n"
+        "VAR x: re;\n"
+        "    z: arr;\n"
+        "    y: REAL;\n"
+        "BEGIN\n"
+        "    x.a := 3.14;\n"
+        "    y := x.a + 2\n"
+        "END.");
     sourceLayout->addWidget(sourceEdit_);
 
     auto* buttonLayout = new QGridLayout();
@@ -88,9 +101,7 @@ void MainWindow::buildUi() {
     idConstLayout->addWidget(constantTable_);
     tabWidget_->addTab(idConstPage, "标识符与常数表");
 
-    symbolTable_ = new QTableWidget(tabWidget_);
-    setupTable(symbolTable_, {"Name", "Type", "Category", "Address", "Size"});
-    tabWidget_->addTab(createTablePage("语义分析阶段维护的符号表", symbolTable_), "符号表");
+    tabWidget_->addTab(createSymbolSystemPage(), "符号表");
 
     recordTable_ = new QTableWidget(tabWidget_);
     setupTable(recordTable_, {"RecordName", "FieldName", "FieldType", "Offset", "Size", "TotalSize"});
@@ -120,6 +131,39 @@ void MainWindow::buildUi() {
 
     connect(compileButton_, &QPushButton::clicked, this, [this]() { compileAndRun(); });
     connect(clearButton_, &QPushButton::clicked, this, [this]() { clearOutput(); });
+}
+
+QWidget* MainWindow::createSymbolSystemPage() {
+    auto* page = new QWidget(tabWidget_);
+    auto* layout = new QVBoxLayout(page);
+    auto* label = new QLabel("语义分析阶段维护的符号表系统：总表、类型表、结构表、数组表和长度表", page);
+    label->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
+
+    symbolTabWidget_ = new QTabWidget(page);
+
+    synblTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(synblTable_, {"序号", "NAME", "TYPE", "CAT", "ADDR", "SIZE"});
+    symbolTabWidget_->addTab(createTablePage("SYNBL 总表：保存标识符及其语义信息", synblTable_), "SYNBL总表");
+
+    typelTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(typelTable_, {"序号", "TYPE", "KIND", "POINT/INFO"});
+    symbolTabWidget_->addTab(createTablePage("TYPEL 类型表：保存基本类型和 record 类型入口", typelTable_), "TYPEL类型表");
+
+    rinflTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(rinflTable_, {"序号", "RecordName", "ID", "OFF", "TYPE", "SIZE"});
+    symbolTabWidget_->addTab(createTablePage("RINFL 结构表：保存 record 字段名、字段偏移和字段类型", rinflTable_), "RINFL结构表");
+
+    ainflTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(ainflTable_, {"序号", "ArrayName", "LOW", "UP", "CTP", "CLEN", "TOTAL"});
+    symbolTabWidget_->addTab(createTablePage("AINFL 数组表：保存数组上下界、成分类型和成分长度", ainflTable_), "AINFL数组表");
+
+    lenlTable_ = new QTableWidget(symbolTabWidget_);
+    setupTable(lenlTable_, {"序号", "TYPE", "LEN"});
+    symbolTabWidget_->addTab(createTablePage("LENL 长度表：保存各类型占用的字节数", lenlTable_), "LENL长度表");
+
+    layout->addWidget(label);
+    layout->addWidget(symbolTabWidget_);
+    return page;
 }
 
 QWidget* MainWindow::createTablePage(const QString& description, QTableWidget* table) {
@@ -178,7 +222,11 @@ void MainWindow::clearOutput() {
     tokenTable_->setRowCount(0);
     identifierTable_->setRowCount(0);
     constantTable_->setRowCount(0);
-    symbolTable_->setRowCount(0);
+    synblTable_->setRowCount(0);
+    typelTable_->setRowCount(0);
+    rinflTable_->setRowCount(0);
+    ainflTable_->setRowCount(0);
+    lenlTable_->setRowCount(0);
     recordTable_->setRowCount(0);
     quadrupleTable_->setRowCount(0);
     runtimeText_->clear();
@@ -222,14 +270,125 @@ void MainWindow::fillIdentifierAndConstantTables(const CompileResult& result) {
 }
 
 void MainWindow::fillSymbolTable(const CompileResult& result) {
-    symbolTable_->setRowCount(static_cast<int>(result.symbols.size()));
+    fillSynblTable(result);
+    fillTypelTable(result);
+    fillRinflTable(result);
+    fillAinflTable(result);
+    fillLenlTable(result);
+}
+
+void MainWindow::fillSynblTable(const CompileResult& result) {
+    synblTable_->setRowCount(static_cast<int>(result.symbols.size()));
     for (int row = 0; row < static_cast<int>(result.symbols.size()); ++row) {
         const Symbol& symbol = result.symbols[row];
-        symbolTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(symbol.name)));
-        symbolTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(symbol.typeName)));
-        symbolTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(symbol.kind)));
-        symbolTable_->setItem(row, 3, new QTableWidgetItem(symbol.address >= 0 ? QString::number(symbol.address) : "_"));
-        symbolTable_->setItem(row, 4, new QTableWidgetItem(QString::number(symbol.size)));
+        synblTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        synblTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(symbol.name)));
+        synblTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(symbol.typeName)));
+        synblTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(symbol.kind)));
+        synblTable_->setItem(row, 4, new QTableWidgetItem(symbol.address >= 0 ? QString::number(symbol.address) : "_"));
+        synblTable_->setItem(row, 5, new QTableWidgetItem(QString::number(symbol.size)));
+    }
+}
+
+void MainWindow::fillTypelTable(const CompileResult& result) {
+    typelTable_->setRowCount(4 + static_cast<int>(result.recordTypes.size()) + static_cast<int>(result.arrayTypes.size()));
+
+    const QString basicTypes[4][3] = {
+        {"integer", "basic", "LEN=4"},
+        {"real", "basic", "LEN=8"},
+        {"char", "basic", "LEN=1"},
+        {"boolean", "basic", "LEN=1"}
+    };
+
+    int row = 0;
+    for (; row < 4; ++row) {
+        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        typelTable_->setItem(row, 1, new QTableWidgetItem(basicTypes[row][0]));
+        typelTable_->setItem(row, 2, new QTableWidgetItem(basicTypes[row][1]));
+        typelTable_->setItem(row, 3, new QTableWidgetItem(basicTypes[row][2]));
+    }
+
+    for (const auto& record : result.recordTypes) {
+        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        typelTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
+        typelTable_->setItem(row, 2, new QTableWidgetItem("record"));
+        typelTable_->setItem(row, 3, new QTableWidgetItem(QString("RINFL, totalSize=%1").arg(record.totalSize)));
+        ++row;
+    }
+
+    for (const auto& array : result.arrayTypes) {
+        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        typelTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
+        typelTable_->setItem(row, 2, new QTableWidgetItem("array"));
+        typelTable_->setItem(row, 3, new QTableWidgetItem(QString("AINFL, totalSize=%1").arg(array.totalSize)));
+        ++row;
+    }
+}
+
+void MainWindow::fillRinflTable(const CompileResult& result) {
+    int rowCount = 0;
+    for (const auto& record : result.recordTypes) {
+        rowCount += static_cast<int>(record.fields.size());
+    }
+
+    rinflTable_->setRowCount(rowCount);
+    int row = 0;
+    for (const auto& record : result.recordTypes) {
+        for (const auto& field : record.fields) {
+            rinflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+            rinflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
+            rinflTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(field.name)));
+            rinflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(field.offset)));
+            rinflTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(field.type)));
+            rinflTable_->setItem(row, 5, new QTableWidgetItem(QString::number(field.size)));
+            ++row;
+        }
+    }
+}
+
+void MainWindow::fillAinflTable(const CompileResult& result) {
+    ainflTable_->setRowCount(static_cast<int>(result.arrayTypes.size()));
+    for (int row = 0; row < static_cast<int>(result.arrayTypes.size()); ++row) {
+        const auto& array = result.arrayTypes[row];
+        ainflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        ainflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
+        ainflTable_->setItem(row, 2, new QTableWidgetItem(QString::number(array.low)));
+        ainflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(array.high)));
+        ainflTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(array.elementType)));
+        ainflTable_->setItem(row, 5, new QTableWidgetItem(QString::number(array.elementSize)));
+        ainflTable_->setItem(row, 6, new QTableWidgetItem(QString::number(array.totalSize)));
+    }
+}
+
+void MainWindow::fillLenlTable(const CompileResult& result) {
+    lenlTable_->setRowCount(4 + static_cast<int>(result.recordTypes.size()) + static_cast<int>(result.arrayTypes.size()));
+
+    const QString basicTypes[4][2] = {
+        {"integer", "4"},
+        {"real", "8"},
+        {"char", "1"},
+        {"boolean", "1"}
+    };
+
+    int row = 0;
+    for (; row < 4; ++row) {
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        lenlTable_->setItem(row, 1, new QTableWidgetItem(basicTypes[row][0]));
+        lenlTable_->setItem(row, 2, new QTableWidgetItem(basicTypes[row][1]));
+    }
+
+    for (const auto& record : result.recordTypes) {
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        lenlTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
+        lenlTable_->setItem(row, 2, new QTableWidgetItem(QString::number(record.totalSize)));
+        ++row;
+    }
+
+    for (const auto& array : result.arrayTypes) {
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
+        lenlTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
+        lenlTable_->setItem(row, 2, new QTableWidgetItem(QString::number(array.totalSize)));
+        ++row;
     }
 }
 

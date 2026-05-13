@@ -18,6 +18,7 @@ struct CompileResult {
     std::vector<std::string> constantTable;
     std::vector<Symbol> symbols;
     std::vector<RecordType> recordTypes;
+    std::vector<ArrayType> arrayTypes;
     std::vector<Quadruple> quadruples;
     std::map<std::string, double> runtimeValues;
 };

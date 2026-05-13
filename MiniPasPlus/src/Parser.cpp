@@ -1,6 +1,7 @@
 #include "Parser.h"
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 Parser::Parser(std::vector<Token> tokens)
@@ -20,6 +21,7 @@ CompileResult Parser::parse() {
     consume(TokenType::END_OF_FILE, "", "程序结束后不应再有其它内容");
     result_.symbols = symbolTable_.entries();
     result_.recordTypes = typeTable_.recordTypes();
+    result_.arrayTypes = typeTable_.arrayTypes();
     return result_;
 }
 
@@ -37,9 +39,10 @@ void Parser::parseProgram() {
     emit("end", programName_, "_", "_");
 }
 
-// DECL_PART -> TYPE_DECL_PART VAR_DECL_PART
+// DECL_PART -> TYPE_DECL_PART FUNCTION_DECL_PART VAR_DECL_PART
 void Parser::parseDeclPart() {
     parseTypeDeclPart();
+    parseFunctionDeclPart();
     parseVarDeclPart();
 }
 
@@ -57,20 +60,55 @@ void Parser::parseTypeDeclList() {
     }
 }
 
-// TYPE_DECL -> id = record FIELD_DECL_LIST end ;
+// TYPE_DECL -> id = TYPE_SPEC ;
 void Parser::parseTypeDecl() {
     Token typeName = consumeIdentifier("type 声明中缺少类型名");
-    if (typeTable_.findRecordType(typeName.lexeme) != nullptr) {
-        errorAtCurrent("record 类型重复声明: " + typeName.lexeme);
+    if (typeTable_.findRecordType(typeName.lexeme) != nullptr || typeTable_.findArrayType(typeName.lexeme) != nullptr) {
+        errorAtCurrent("类型重复声明: " + typeName.lexeme);
     }
 
-    consume(TokenType::OPERATOR, "=", "record 类型名后面缺少 =");
+    consume(TokenType::OPERATOR, "=", "类型名后面缺少 =");
+    parseTypeSpec(typeName.lexeme);
+    consume(TokenType::DELIMITER, ";", "类型声明后缺少 ;");
+}
+
+// TYPE_SPEC -> record FIELD_DECL_LIST end | array [ low .. high ] of TYPE_NAME
+void Parser::parseTypeSpec(const std::string& typeName) {
+    if (check(TokenType::KEYWORD, "record")) {
+        parseRecordTypeDecl(typeName);
+        return;
+    }
+    if (check(TokenType::KEYWORD, "array")) {
+        parseArrayTypeDecl(typeName);
+        return;
+    }
+    errorAtCurrent("类型定义应为 record 或 array");
+}
+
+void Parser::parseRecordTypeDecl(const std::string& typeName) {
     consume(TokenType::KEYWORD, "record", "= 后面应是 record");
     std::vector<FieldInfo> fields = parseFieldDeclList();
     consume(TokenType::KEYWORD, "end", "record 字段声明后缺少 end");
-    consume(TokenType::DELIMITER, ";", "record 类型声明后缺少 ;");
+    typeTable_.addRecordType(typeName, fields);
+}
 
-    typeTable_.addRecordType(typeName.lexeme, fields);
+void Parser::parseArrayTypeDecl(const std::string& typeName) {
+    consume(TokenType::KEYWORD, "array", "= 后面应是 array");
+    consume(TokenType::DELIMITER, "[", "array 后面缺少 [");
+    Token lowToken = consume(TokenType::CONSTANT, "", "数组下界应为整数常数");
+    consume(TokenType::DELIMITER, ".", "数组上下界之间缺少 ..");
+    consume(TokenType::DELIMITER, ".", "数组上下界之间缺少 ..");
+    Token highToken = consume(TokenType::CONSTANT, "", "数组上界应为整数常数");
+    consume(TokenType::DELIMITER, "]", "数组上界后缺少 ]");
+    consume(TokenType::KEYWORD, "of", "数组声明缺少 of");
+    std::string elementType = parseTypeName();
+
+    int low = std::stoi(lowToken.lexeme);
+    int high = std::stoi(highToken.lexeme);
+    if (low > high) {
+        errorAtToken(lowToken, "数组下界不能大于上界");
+    }
+    typeTable_.addArrayType(typeName, low, high, elementType);
 }
 
 // FIELD_DECL_LIST -> FIELD_DECL FIELD_DECL_LIST | ε
@@ -91,7 +129,7 @@ FieldInfo Parser::parseFieldDecl() {
     return {fieldName.lexeme, type};
 }
 
-// BASIC_TYPE -> integer | real | char
+// BASIC_TYPE -> integer | real | char | boolean
 std::string Parser::parseBasicType() {
     if (isBasicTypeToken()) {
         std::string type = peek().lexeme;
@@ -102,21 +140,72 @@ std::string Parser::parseBasicType() {
     return "";
 }
 
-// VAR_DECL_PART -> var VAR_DECL_LIST
-void Parser::parseVarDeclPart() {
-    consume(TokenType::KEYWORD, "var", "声明部分缺少 var");
-    parseVarDeclList();
+void Parser::parseFunctionDeclPart() {
+    while (check(TokenType::KEYWORD, "function")) {
+        parseFunctionDecl();
+    }
+}
+
+// FUNCTION_DECL -> function id ( PARAM_LIST ) : TYPE_NAME ; VAR_DECL_PART COMPOUND_STMT ;
+void Parser::parseFunctionDecl() {
+    consume(TokenType::KEYWORD, "function", "函数声明应以 function 开头");
+    Token functionName = consumeIdentifier("function 后面应是函数名");
+
+    consume(TokenType::DELIMITER, "(", "函数名后面缺少 (");
+    if (!check(TokenType::DELIMITER, ")")) {
+        parseParamList(functionName.lexeme);
+    }
+    consume(TokenType::DELIMITER, ")", "函数参数表后面缺少 )");
+    consume(TokenType::DELIMITER, ":", "函数返回类型前缺少 :");
+    std::string returnType = parseTypeName();
+    consume(TokenType::DELIMITER, ";", "函数头后缺少 ;");
+
+    symbolTable_.add({functionName.lexeme, returnType, "function", -1, typeTable_.getTypeSize(returnType)});
+    parseVarDeclPart(false, functionName.lexeme);
+    parseCompoundStmt();
+    consume(TokenType::DELIMITER, ";", "函数体后缺少 ;");
+}
+
+// PARAM_LIST -> PARAM { ; PARAM }
+void Parser::parseParamList(const std::string& functionName) {
+    parseParam(functionName);
+    while (match(TokenType::DELIMITER, ";")) {
+        parseParam(functionName);
+    }
+}
+
+// PARAM -> var? ID_LIST : TYPE_NAME
+void Parser::parseParam(const std::string& functionName) {
+    bool byRef = match(TokenType::KEYWORD, "var");
+    std::vector<std::string> names = parseIdList();
+    consume(TokenType::DELIMITER, ":", "参数名后面缺少 :");
+    std::string typeName = parseTypeName();
+    for (const auto& name : names) {
+        std::string kind = byRef ? "var parameter of " + functionName : "parameter of " + functionName;
+        symbolTable_.add({name, typeName, kind, -1, typeTable_.getTypeSize(typeName)});
+    }
+}
+
+// VAR_DECL_PART -> var VAR_DECL_LIST | ε
+void Parser::parseVarDeclPart(bool required, const std::string& scope) {
+    if (!match(TokenType::KEYWORD, "var")) {
+        if (required) {
+            errorAtCurrent("声明部分缺少 var");
+        }
+        return;
+    }
+    parseVarDeclList(scope);
 }
 
 // VAR_DECL_LIST -> VAR_DECL VAR_DECL_LIST | ε
-void Parser::parseVarDeclList() {
+void Parser::parseVarDeclList(const std::string& scope) {
     while (check(TokenType::IDENTIFIER)) {
-        parseVarDecl();
+        parseVarDecl(scope);
     }
 }
 
 // VAR_DECL -> ID_LIST : TYPE_NAME ;
-void Parser::parseVarDecl() {
+void Parser::parseVarDecl(const std::string& scope) {
     std::vector<std::string> names = parseIdList();
     consume(TokenType::DELIMITER, ":", "变量名后面缺少 :");
     std::string typeName = parseTypeName();
@@ -128,6 +217,12 @@ void Parser::parseVarDecl() {
         }
         int size = typeTable_.getTypeSize(typeName);
         std::string kind = typeTable_.findRecordType(typeName) ? "record variable" : "variable";
+        if (typeTable_.findArrayType(typeName)) {
+            kind = "array variable";
+        }
+        if (!scope.empty()) {
+            kind = "local " + kind + " of " + scope;
+        }
         symbolTable_.add({name, typeName, kind, nextAddress_, size});
         nextAddress_ += size;
     }
@@ -153,7 +248,7 @@ std::string Parser::parseTypeName() {
 
     if (check(TokenType::IDENTIFIER)) {
         std::string typeName = peek().lexeme;
-        if (typeTable_.findRecordType(typeName) == nullptr) {
+        if (typeTable_.findRecordType(typeName) == nullptr && typeTable_.findArrayType(typeName) == nullptr) {
             errorAtCurrent("使用了未声明的类型: " + typeName);
         }
         ++current_;
@@ -326,7 +421,8 @@ void Parser::errorAtToken(const Token& token, const std::string& reason) const {
 bool Parser::isBasicTypeToken() const {
     return check(TokenType::KEYWORD, "integer")
         || check(TokenType::KEYWORD, "real")
-        || check(TokenType::KEYWORD, "char");
+        || check(TokenType::KEYWORD, "char")
+        || check(TokenType::KEYWORD, "boolean");
 }
 
 bool Parser::isStatementStart() const {

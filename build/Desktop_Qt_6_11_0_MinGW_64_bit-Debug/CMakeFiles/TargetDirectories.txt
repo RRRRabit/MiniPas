@@ -1,2 +1,0 @@
-C:/Users/JACK/Desktop/MiniPas/build/Desktop_Qt_6_11_0_MinGW_64_bit-Debug/CMakeFiles/edit_cache.dir
-C:/Users/JACK/Desktop/MiniPas/build/Desktop_Qt_6_11_0_MinGW_64_bit-Debug/CMakeFiles/rebuild_cache.dir

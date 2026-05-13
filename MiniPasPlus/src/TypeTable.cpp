@@ -28,6 +28,26 @@ const RecordType* TypeTable::findRecordType(const std::string& name) const {
     return nullptr;
 }
 
+void TypeTable::addArrayType(const std::string& name, int low, int high, const std::string& elementType) {
+    ArrayType array;
+    array.name = name;
+    array.low = low;
+    array.high = high;
+    array.elementType = elementType;
+    array.elementSize = getTypeSize(elementType);
+    array.totalSize = (high - low + 1) * array.elementSize;
+    arrayTypes_.push_back(array);
+}
+
+const ArrayType* TypeTable::findArrayType(const std::string& name) const {
+    for (const auto& array : arrayTypes_) {
+        if (array.name == name) {
+            return &array;
+        }
+    }
+    return nullptr;
+}
+
 const FieldInfo* TypeTable::findField(const std::string& recordName, const std::string& fieldName) const {
     const RecordType* record = findRecordType(recordName);
     if (record == nullptr) {
@@ -52,10 +72,18 @@ int TypeTable::getTypeSize(const std::string& typeName) const {
     if (typeName == "char") {
         return 1;
     }
+    if (typeName == "boolean") {
+        return 1;
+    }
 
     const RecordType* record = findRecordType(typeName);
     if (record != nullptr) {
         return record->totalSize;
+    }
+
+    const ArrayType* array = findArrayType(typeName);
+    if (array != nullptr) {
+        return array->totalSize;
     }
 
     return -1;
@@ -74,4 +102,8 @@ void TypeTable::printTypeTable(std::ostream& out) const {
 
 const std::vector<RecordType>& TypeTable::recordTypes() const {
     return recordTypes_;
+}
+
+const std::vector<ArrayType>& TypeTable::arrayTypes() const {
+    return arrayTypes_;
 }

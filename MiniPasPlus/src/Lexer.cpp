@@ -10,7 +10,8 @@ std::vector<Token> Lexer::tokenize() {
     std::vector<Token> tokens;
     const std::set<std::string> keywords = {
         "program", "type", "record", "var", "begin", "end",
-        "integer", "real", "char"
+        "integer", "real", "char",
+        "array", "of", "function", "boolean"
     };
 
     while (!isAtEnd()) {
@@ -29,8 +30,9 @@ std::vector<Token> Lexer::tokenize() {
                 word.push_back(advance());
             }
 
-            if (keywords.count(word)) {
-                tokens.push_back({TokenType::KEYWORD, word, startLine, startColumn});
+            std::string lowerWord = toLower(word);
+            if (keywords.count(lowerWord)) {
+                tokens.push_back({TokenType::KEYWORD, lowerWord, startLine, startColumn});
             } else {
                 addUnique(identifiers_, word);
                 tokens.push_back({TokenType::IDENTIFIER, word, startLine, startColumn});
@@ -58,7 +60,8 @@ std::vector<Token> Lexer::tokenize() {
                 tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn});
             } else if (text == "+" || text == "-" || text == "*" || text == "/" || text == "=") {
                 tokens.push_back({TokenType::OPERATOR, text, startLine, startColumn});
-            } else if (text == ";" || text == ":" || text == "," || text == "." || text == "(" || text == ")") {
+            } else if (text == ";" || text == ":" || text == "," || text == "." || text == "(" || text == ")"
+                       || text == "[" || text == "]") {
                 tokens.push_back({TokenType::DELIMITER, text, startLine, startColumn});
             } else {
                 // 非法字符不直接中断分析，而是生成 ERROR Token，便于界面或控制台定位问题。
@@ -118,6 +121,14 @@ void Lexer::addUnique(std::vector<std::string>& table, const std::string& value)
         }
     }
     table.push_back(value);
+}
+
+std::string Lexer::toLower(const std::string& text) const {
+    std::string result;
+    for (char ch : text) {
+        result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+    return result;
 }
 
 std::string tokenTypeToString(TokenType type) {
