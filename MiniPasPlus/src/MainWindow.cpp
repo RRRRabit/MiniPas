@@ -15,6 +15,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QVBoxLayout>
+#include <map>
 #include <set>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -39,9 +40,7 @@ MainWindow::MainWindow(QWidget* parent)
       conslTable_(nullptr),
       lenlTable_(nullptr),
       vallTable_(nullptr),
-      recordTable_(nullptr),
-      quadrupleTable_(nullptr),
-      optimizedQuadrupleTable_(nullptr),
+      quadrupleOptimizeTable_(nullptr),
       targetCodeTable_(nullptr),
       runtimeText_(nullptr) {
     buildUi();
@@ -61,6 +60,7 @@ void MainWindow::buildUi() {
 
     auto* leftPanel = new QWidget(splitter);
     auto* leftLayout = new QVBoxLayout(leftPanel);
+    auto* leftSplitter = new QSplitter(Qt::Vertical, leftPanel);
 
     auto* sourceGroup = new QGroupBox("源程序输入区", leftPanel);
     auto* sourceLayout = new QVBoxLayout(sourceGroup);
@@ -83,54 +83,76 @@ void MainWindow::buildUi() {
         "END.");
     sourceLayout->addWidget(sourceEdit_);
 
-    auto* buttonLayout = new QGridLayout();
-    compileButton_ = new QPushButton("编译并运行", leftPanel);
-    clearButton_ = new QPushButton("清空输出", leftPanel);
+    auto* buttonArea = new QWidget(leftPanel);
+    auto* buttonLayout = new QGridLayout(buttonArea);
+    compileButton_ = new QPushButton("编译并运行", buttonArea);
+    clearButton_ = new QPushButton("清空输出", buttonArea);
     buttonLayout->addWidget(compileButton_, 0, 0);
     buttonLayout->addWidget(clearButton_, 0, 1);
 
-    leftLayout->addWidget(sourceGroup);
-    leftLayout->addLayout(buttonLayout);
+    leftSplitter->addWidget(sourceGroup);
+    leftSplitter->addWidget(buttonArea);
+    leftSplitter->setStretchFactor(0, 20);
+    leftSplitter->setStretchFactor(1, 1);
+    leftSplitter->setSizes({620, 80});
+    leftSplitter->setCollapsible(1, false);
+    leftLayout->addWidget(leftSplitter);
 
     tabWidget_ = new QTabWidget(splitter);
 
-    tokenTable_ = new QTableWidget(tabWidget_);
-    setupTable(tokenTable_, {"序号", "编码", "类型", "单词", "行号", "列号"});
-    tabWidget_->addTab(createTablePage("词法分析阶段生成的 Token 序列", tokenTable_), "Token序列");
+    auto* lexPage = new QWidget(tabWidget_);
+    auto* lexRoot = new QVBoxLayout(lexPage);
+    auto* lexTitle = new QLabel("词法分析", lexPage);
+    lexTitle->setStyleSheet("font-weight: 700; color: #334155; padding: 4px 0;");
+    lexRoot->addWidget(lexTitle);
 
-    auto* idConstPage = new QWidget(tabWidget_);
-    auto* idConstLayout = new QGridLayout(idConstPage);
-    keywordTable_ = new QTableWidget(idConstPage);
-    delimiterTable_ = new QTableWidget(idConstPage);
-    identifierTable_ = new QTableWidget(idConstPage);
-    constantTable_ = new QTableWidget(idConstPage);
+    auto* lexLayout = new QHBoxLayout();
+
+    auto* tokenPanel = new QWidget(lexPage);
+    auto* tokenLayout = new QVBoxLayout(tokenPanel);
+    tokenTable_ = new QTableWidget(tokenPanel);
+    setupTable(tokenTable_, {"序号", "编码"});
+    tokenTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    tokenTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    tokenTable_->setColumnWidth(0, 48);
+    tokenLayout->addWidget(new QLabel("Token序列表", tokenPanel));
+    tokenLayout->addWidget(tokenTable_);
+
+    auto* rightPanel = new QWidget(lexPage);
+    auto* rightLayout = new QVBoxLayout(rightPanel);
+    keywordTable_ = new QTableWidget(rightPanel);
+    delimiterTable_ = new QTableWidget(rightPanel);
+    identifierTable_ = new QTableWidget(rightPanel);
+    constantTable_ = new QTableWidget(rightPanel);
     setupTable(keywordTable_, {"编号", "关键字"});
     setupTable(delimiterTable_, {"编号", "界符"});
     setupTable(identifierTable_, {"序号", "标识符"});
-    setupTable(constantTable_, {"序号", "常数", "类型", "数值"});
-    idConstLayout->addWidget(new QLabel("关键字表 K", idConstPage), 0, 0);
-    idConstLayout->addWidget(new QLabel("界符表 P", idConstPage), 0, 1);
-    idConstLayout->addWidget(keywordTable_, 1, 0);
-    idConstLayout->addWidget(delimiterTable_, 1, 1);
-    idConstLayout->addWidget(new QLabel("标识符表 I", idConstPage), 2, 0);
-    idConstLayout->addWidget(new QLabel("常数表 C", idConstPage), 2, 1);
-    idConstLayout->addWidget(identifierTable_, 3, 0);
-    idConstLayout->addWidget(constantTable_, 3, 1);
-    tabWidget_->addTab(idConstPage, "标识符与常数表");
+    setupTable(constantTable_, {"序号", "常数", "类型"});
+    rightLayout->addWidget(new QLabel("标识符表 I", rightPanel));
+    rightLayout->addWidget(identifierTable_);
+    rightLayout->addWidget(new QLabel("常数表 C", rightPanel));
+    rightLayout->addWidget(constantTable_);
+    rightLayout->addWidget(new QLabel("关键字表 K", rightPanel));
+    rightLayout->addWidget(keywordTable_);
+    rightLayout->addWidget(new QLabel("界符表 P", rightPanel));
+    rightLayout->addWidget(delimiterTable_);
+
+    lexLayout->addWidget(tokenPanel, 1);
+    lexLayout->addWidget(rightPanel, 2);
+    lexRoot->addLayout(lexLayout);
+    tabWidget_->addTab(lexPage, "词法分析");
 
     tabWidget_->addTab(createSymbolSystemPage(), "符号表");
 
-    recordTable_ = new QTableWidget(tabWidget_);
-    setupTable(recordTable_, {"RecordName", "FieldName", "FieldType", "Offset", "Size", "TotalSize"});
-    tabWidget_->addTab(createTablePage("record 结构体字段偏移信息", recordTable_), "Record类型表");
-
-    quadrupleTable_ = new QTableWidget(tabWidget_);
-    setupTable(quadrupleTable_, {"基本块", "序号", "op", "arg1", "arg2", "result"});
-    tabWidget_->addTab(createTablePage("中间代码生成阶段得到的四元式序列", quadrupleTable_), "四元式序列");
-
-    optimizedQuadrupleTable_ = new QTableWidget(tabWidget_);
-    setupTable(optimizedQuadrupleTable_, {"基本块", "序号", "op", "arg1", "arg2", "result"});
-    tabWidget_->addTab(createTablePage("基本块内 DAG 优化后的四元式序列", optimizedQuadrupleTable_), "优化后四元式");
+    quadrupleOptimizeTable_ = new QTableWidget(tabWidget_);
+    setupTable(quadrupleOptimizeTable_, {"基本块", "优化前代码", "优化后代码"});
+    quadrupleOptimizeTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    quadrupleOptimizeTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    quadrupleOptimizeTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    quadrupleOptimizeTable_->setColumnWidth(0, 70);
+    quadrupleOptimizeTable_->setWordWrap(true);
+    quadrupleOptimizeTable_->verticalHeader()->setDefaultSectionSize(24);
+    tabWidget_->addTab(createTablePage("按基本块对照展示优化前/优化后四元式", quadrupleOptimizeTable_), "中间代码及优化");
 
     targetCodeTable_ = new QTableWidget(tabWidget_);
     setupTable(targetCodeTable_, {"基本块", "四元式", "目标代码", "RDL", "SEM"});
@@ -177,15 +199,6 @@ void MainWindow::buildUi() {
 
     connect(compileButton_, &QPushButton::clicked, this, [this]() { compileAndRun(); });
     connect(clearButton_, &QPushButton::clicked, this, [this]() { clearOutput(); });
-    connect(tokenTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
-        const QTableWidgetItem* lineItem = tokenTable_->item(row, 4);
-        const QTableWidgetItem* colItem = tokenTable_->item(row, 5);
-        const QTableWidgetItem* lexemeItem = tokenTable_->item(row, 3);
-        if (!lineItem || !colItem || !lexemeItem) {
-            return;
-        }
-        highlightTokenAt(lineItem->text().toInt(), colItem->text().toInt(), lexemeItem->text());
-    });
     connect(synblTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
         const QTableWidgetItem* nameItem = synblTable_->item(row, 1);
         if (!nameItem) {
@@ -276,10 +289,12 @@ void MainWindow::setupTable(QTableWidget* table, const QStringList& headers) {
     table->setHorizontalHeaderLabels(headers);
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     table->verticalHeader()->setVisible(false);
+    table->verticalHeader()->setDefaultSectionSize(22);
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setAlternatingRowColors(true);
     table->setFont(QFont("Microsoft YaHei", 10));
+    table->setStyleSheet("QTableView::item { padding: 2px 4px; }");
 }
 
 void MainWindow::compileAndRun() {
@@ -319,9 +334,7 @@ void MainWindow::clearOutput() {
     conslTable_->setRowCount(0);
     lenlTable_->setRowCount(0);
     vallTable_->setRowCount(0);
-    recordTable_->setRowCount(0);
-    quadrupleTable_->setRowCount(0);
-    optimizedQuadrupleTable_->setRowCount(0);
+    quadrupleOptimizeTable_->setRowCount(0);
     targetCodeTable_->setRowCount(0);
     runtimeText_->clear();
     clearSourceHighlight();
@@ -334,9 +347,7 @@ void MainWindow::fillAllTables(const CompileResult& result) {
     fillKeywordAndDelimiterTables(result);
     fillIdentifierAndConstantTables(result);
     fillSymbolTable(result);
-    fillRecordTable(result);
-    fillQuadrupleTable(result);
-    fillOptimizedQuadrupleTable(result);
+    fillQuadrupleOptimizeTable(result);
     fillTargetCodeTable(result);
     fillRuntimeText(result);
 }
@@ -347,10 +358,6 @@ void MainWindow::fillTokenTable(const CompileResult& result) {
         const Token& token = result.tokens[row];
         tokenTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
         tokenTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(tokenCodeToString(token))));
-        tokenTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(tokenTypeToString(token.type))));
-        tokenTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(token.lexeme)));
-        tokenTable_->setItem(row, 4, new QTableWidgetItem(QString::number(token.line)));
-        tokenTable_->setItem(row, 5, new QTableWidgetItem(QString::number(token.column)));
     }
 }
 
@@ -383,7 +390,6 @@ void MainWindow::fillIdentifierAndConstantTables(const CompileResult& result) {
         constantTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row)));
         constantTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(entry.text)));
         constantTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(entry.type)));
-        constantTable_->setItem(row, 3, new QTableWidgetItem(QString::number(entry.numberValue, 'g', 12)));
     }
 }
 
@@ -595,94 +601,36 @@ void MainWindow::fillVallTable(const CompileResult& result) {
     }
 }
 
-void MainWindow::fillRecordTable(const CompileResult& result) {
-    int rowCount = 0;
-    for (const auto& record : result.recordTypes) {
-        rowCount += static_cast<int>(record.fields.size());
-    }
-
-    recordTable_->setRowCount(rowCount);
-    int row = 0;
-    for (const auto& record : result.recordTypes) {
-        for (const auto& field : record.fields) {
-            recordTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(record.name)));
-            recordTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(field.name)));
-            recordTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(field.type)));
-            recordTable_->setItem(row, 3, new QTableWidgetItem(QString::number(field.offset)));
-            recordTable_->setItem(row, 4, new QTableWidgetItem(QString::number(field.size)));
-            recordTable_->setItem(row, 5, new QTableWidgetItem(QString::number(record.totalSize)));
-            ++row;
+void MainWindow::fillQuadrupleOptimizeTable(const CompileResult& result) {
+    auto buildBlocks = [](const std::vector<Quadruple>& quads) {
+        std::vector<BasicBlock> blocks;
+        if (quads.empty()) {
+            return blocks;
         }
-    }
-}
-
-void MainWindow::fillQuadrupleTable(const CompileResult& result) {
-    quadrupleTable_->setRowCount(static_cast<int>(result.quadruples.size()));
-
-    std::vector<int> quadToBlock(result.quadruples.size(), -1);
-    for (const auto& block : result.basicBlocks) {
-        int begin = std::max(0, block.start);
-        int end = std::min(static_cast<int>(result.quadruples.size()) - 1, block.end);
-        for (int i = begin; i <= end; ++i) {
-            quadToBlock[i] = block.id;
-        }
-    }
-
-    for (int row = 0; row < static_cast<int>(result.quadruples.size()); ++row) {
-        const Quadruple& quad = result.quadruples[row];
-        QString blockLabel = (row < static_cast<int>(quadToBlock.size()) && quadToBlock[row] >= 0)
-            ? QString("B%1").arg(quadToBlock[row] + 1)
-            : "_";
-        quadrupleTable_->setItem(row, 0, new QTableWidgetItem(blockLabel));
-        quadrupleTable_->setItem(row, 1, new QTableWidgetItem(QString::number(row)));
-        quadrupleTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(quad.op)));
-        quadrupleTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(quad.arg1)));
-        quadrupleTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(quad.arg2)));
-        quadrupleTable_->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(quad.result)));
-    }
-}
-
-void MainWindow::fillRuntimeText(const CompileResult& result) {
-    QString text;
-    for (const auto& item : result.runtimeValues) {
-        text += QString::fromStdString(item.first)
-            + " = "
-            + QString::number(item.second, 'g', 12)
-            + "\n";
-    }
-    runtimeText_->setPlainText(text);
-}
-
-void MainWindow::fillOptimizedQuadrupleTable(const CompileResult& result) {
-    optimizedQuadrupleTable_->setRowCount(static_cast<int>(result.optimizedQuadruples.size()));
-    std::vector<int> quadToBlock(result.optimizedQuadruples.size(), -1);
-    if (!result.optimizedQuadruples.empty()) {
         std::set<int> leaders;
         leaders.insert(0);
         struct IfCtx {
             int ifIndex = -1;
             int elIndex = -1;
         };
-        std::map<int, int> ifToIe;
-        std::map<int, int> ifToEl;
-        std::vector<IfCtx> ifStack;
-        std::vector<int> whStack;
         struct DoCtx {
             int doIndex = -1;
             int whIndex = -1;
         };
+        std::map<int, int> ifToIe;
+        std::map<int, int> ifToEl;
+        std::vector<IfCtx> ifStack;
+        std::vector<int> whStack;
         std::vector<DoCtx> doStack;
         std::map<int, int> doToWe;
         std::map<int, int> weToWh;
 
-        for (int i = 0; i < static_cast<int>(result.optimizedQuadruples.size()); ++i) {
-            const Quadruple& q = result.optimizedQuadruples[i];
+        for (int i = 0; i < static_cast<int>(quads.size()); ++i) {
+            const Quadruple& q = quads[i];
             if (q.op == "if") {
                 ifStack.push_back({i, -1});
             } else if (q.op == "el") {
-                if (!ifStack.empty()) {
-                    ifStack.back().elIndex = i;
-                }
+                if (!ifStack.empty()) ifStack.back().elIndex = i;
             } else if (q.op == "ie") {
                 if (!ifStack.empty()) {
                     ifToIe[ifStack.back().ifIndex] = i;
@@ -699,53 +647,36 @@ void MainWindow::fillOptimizedQuadrupleTable(const CompileResult& result) {
                     DoCtx ctx = doStack.back();
                     doStack.pop_back();
                     doToWe[ctx.doIndex] = i;
-                    if (ctx.whIndex >= 0) {
-                        weToWh[i] = ctx.whIndex;
-                    }
+                    if (ctx.whIndex >= 0) weToWh[i] = ctx.whIndex;
                 }
-                if (!whStack.empty()) {
-                    whStack.pop_back();
-                }
+                if (!whStack.empty()) whStack.pop_back();
             }
         }
 
-        for (int i = 0; i < static_cast<int>(result.optimizedQuadruples.size()); ++i) {
-            const Quadruple& q = result.optimizedQuadruples[i];
+        for (int i = 0; i < static_cast<int>(quads.size()); ++i) {
+            const Quadruple& q = quads[i];
             if (q.op == "if") {
-                if (i + 1 < static_cast<int>(result.optimizedQuadruples.size())) {
-                    leaders.insert(i + 1);
-                }
+                if (i + 1 < static_cast<int>(quads.size())) leaders.insert(i + 1);
                 int falseTarget = -1;
                 auto e = ifToEl.find(i);
-                if (e != ifToEl.end() && e->second >= 0) {
-                    falseTarget = e->second + 1;
-                } else {
+                if (e != ifToEl.end() && e->second >= 0) falseTarget = e->second + 1;
+                else {
                     auto f = ifToIe.find(i);
-                    if (f != ifToIe.end()) {
-                        falseTarget = f->second;
-                    }
+                    if (f != ifToIe.end()) falseTarget = f->second;
                 }
-                if (falseTarget >= 0 && falseTarget < static_cast<int>(result.optimizedQuadruples.size())) {
-                    leaders.insert(falseTarget);
-                }
+                if (falseTarget >= 0 && falseTarget < static_cast<int>(quads.size())) leaders.insert(falseTarget);
             } else if (q.op == "do") {
-                if (i + 1 < static_cast<int>(result.optimizedQuadruples.size())) {
-                    leaders.insert(i + 1);
-                }
+                if (i + 1 < static_cast<int>(quads.size())) leaders.insert(i + 1);
                 auto f = doToWe.find(i);
                 if (f != doToWe.end()) {
                     int falseTarget = f->second + 1;
-                    if (falseTarget < static_cast<int>(result.optimizedQuadruples.size())) {
-                        leaders.insert(falseTarget);
-                    }
+                    if (falseTarget < static_cast<int>(quads.size())) leaders.insert(falseTarget);
                 }
             } else if (q.op == "el") {
                 for (const auto& pair : ifToEl) {
                     if (pair.second == i) {
                         auto ie = ifToIe.find(pair.first);
-                        if (ie != ifToIe.end()) {
-                            leaders.insert(ie->second);
-                        }
+                        if (ie != ifToIe.end()) leaders.insert(ie->second);
                         break;
                     }
                 }
@@ -753,41 +684,84 @@ void MainWindow::fillOptimizedQuadrupleTable(const CompileResult& result) {
                 auto w = weToWh.find(i);
                 if (w != weToWh.end()) {
                     int condEntry = w->second + 1;
-                    if (condEntry < static_cast<int>(result.optimizedQuadruples.size())) {
-                        leaders.insert(condEntry);
-                    }
+                    if (condEntry < static_cast<int>(quads.size())) leaders.insert(condEntry);
                 }
-                if (i + 1 < static_cast<int>(result.optimizedQuadruples.size())) {
-                    leaders.insert(i + 1);
-                }
+                if (i + 1 < static_cast<int>(quads.size())) leaders.insert(i + 1);
             }
         }
 
         std::vector<int> starts(leaders.begin(), leaders.end());
-        for (int bi = 0; bi < static_cast<int>(starts.size()); ++bi) {
-            int begin = starts[bi];
-            int end = (bi + 1 < static_cast<int>(starts.size()))
-                ? starts[bi + 1] - 1
-                : static_cast<int>(result.optimizedQuadruples.size()) - 1;
-            for (int i = begin; i <= end; ++i) {
-                quadToBlock[i] = bi;
-            }
+        std::sort(starts.begin(), starts.end());
+        for (int i = 0; i < static_cast<int>(starts.size()); ++i) {
+            int next = (i + 1 < static_cast<int>(starts.size())) ? starts[i + 1] : static_cast<int>(quads.size());
+            blocks.push_back({i, starts[i], next - 1});
         }
-    }
+        return blocks;
+    };
 
-    for (int row = 0; row < static_cast<int>(result.optimizedQuadruples.size()); ++row) {
-        const Quadruple& quad = result.optimizedQuadruples[row];
-        QString blockLabel = (row < static_cast<int>(quadToBlock.size()) && quadToBlock[row] >= 0)
-            ? QString("B%1").arg(quadToBlock[row] + 1)
-            : "_";
-        optimizedQuadrupleTable_->setItem(row, 0, new QTableWidgetItem(blockLabel));
-        optimizedQuadrupleTable_->setItem(row, 1, new QTableWidgetItem(QString::number(row)));
-        optimizedQuadrupleTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(quad.op)));
-        optimizedQuadrupleTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(quad.arg1)));
-        optimizedQuadrupleTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(quad.arg2)));
-        optimizedQuadrupleTable_->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(quad.result)));
+    const std::vector<BasicBlock> optimizedBlocks = buildBlocks(result.optimizedQuadruples);
+    int count = std::max(static_cast<int>(result.basicBlocks.size()), static_cast<int>(optimizedBlocks.size()));
+    quadrupleOptimizeTable_->setRowCount(count);
+    for (int bi = 0; bi < count; ++bi) {
+        quadrupleOptimizeTable_->setItem(bi, 0, new QTableWidgetItem(QString("B%1").arg(bi + 1)));
+
+        QString beforeText;
+        int beforeLines = 1;
+        if (bi < static_cast<int>(result.basicBlocks.size())) {
+            const BasicBlock& b = result.basicBlocks[bi];
+            for (int i = b.start; i <= b.end && i < static_cast<int>(result.quadruples.size()); ++i) {
+                const Quadruple& q = result.quadruples[i];
+                if (!beforeText.isEmpty()) {
+                    beforeText += "\n";
+                    ++beforeLines;
+                }
+                beforeText += QString("%1: (%2, %3, %4, %5)")
+                    .arg(i).arg(QString::fromStdString(q.op)).arg(QString::fromStdString(q.arg1))
+                    .arg(QString::fromStdString(q.arg2)).arg(QString::fromStdString(q.result));
+            }
+        } else {
+            beforeText = "-";
+        }
+        QTableWidgetItem* beforeItem = new QTableWidgetItem(beforeText);
+        quadrupleOptimizeTable_->setItem(bi, 1, beforeItem);
+
+        QString afterText;
+        int afterLines = 1;
+        if (bi < static_cast<int>(optimizedBlocks.size())) {
+            const BasicBlock& b = optimizedBlocks[bi];
+            for (int i = b.start; i <= b.end && i < static_cast<int>(result.optimizedQuadruples.size()); ++i) {
+                const Quadruple& q = result.optimizedQuadruples[i];
+                if (!afterText.isEmpty()) {
+                    afterText += "\n";
+                    ++afterLines;
+                }
+                afterText += QString("%1: (%2, %3, %4, %5)")
+                    .arg(i).arg(QString::fromStdString(q.op)).arg(QString::fromStdString(q.arg1))
+                    .arg(QString::fromStdString(q.arg2)).arg(QString::fromStdString(q.result));
+            }
+        } else {
+            afterText = "-";
+        }
+        QTableWidgetItem* afterItem = new QTableWidgetItem(afterText);
+        quadrupleOptimizeTable_->setItem(bi, 2, afterItem);
+
+        int maxLines = std::max(beforeLines, afterLines);
+        int rowHeight = std::max(24, maxLines * 18 + 6);
+        quadrupleOptimizeTable_->setRowHeight(bi, rowHeight);
     }
 }
+
+void MainWindow::fillRuntimeText(const CompileResult& result) {
+    QString text;
+    for (const auto& item : result.runtimeValues) {
+        text += QString::fromStdString(item.first)
+            + " = "
+            + QString::number(item.second, 'g', 12)
+            + "\n";
+    }
+    runtimeText_->setPlainText(text);
+}
+
 
 void MainWindow::fillTargetCodeTable(const CompileResult& result) {
     targetCodeTable_->setRowCount(static_cast<int>(result.targetTrace.size()));
