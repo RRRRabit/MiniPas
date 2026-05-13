@@ -40,6 +40,7 @@ private:
     QTableWidget* recordTable_;
     QTableWidget* quadrupleTable_;
     QTableWidget* optimizedQuadrupleTable_;
+    QTableWidget* targetCodeTable_;
     QTextEdit* runtimeText_;
 
     void buildUi();
@@ -66,6 +67,7 @@ private:
     void fillRecordTable(const CompileResult& result);
     void fillQuadrupleTable(const CompileResult& result);
     void fillOptimizedQuadrupleTable(const CompileResult& result);
+    void fillTargetCodeTable(const CompileResult& result);
     void fillRuntimeText(const CompileResult& result);
     void setStatusSuccess(const QString& message);
     void setStatusError(const QString& message);

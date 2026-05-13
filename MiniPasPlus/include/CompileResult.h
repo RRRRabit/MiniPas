@@ -49,6 +49,15 @@ struct BasicBlock {
     int end = 0;
 };
 
+// 目标代码生成跟踪表项：用于展示第9章中的 B/QT/OBJ/RDL/SEM 过程。
+struct TargetTraceItem {
+    std::string basicBlock;
+    std::string quadruple;
+    std::string targetCode;
+    std::string rdl;
+    std::string sem;
+};
+
 // 编译结果：把前端各阶段产生的数据统一打包，方便控制台或 GUI 展示。
 struct CompileResult {
     bool success = false;
@@ -68,6 +77,8 @@ struct CompileResult {
     std::vector<Quadruple> quadruples;
     std::vector<Quadruple> optimizedQuadruples;
     std::vector<BasicBlock> basicBlocks;
+    std::vector<std::string> targetCodes;
+    std::vector<TargetTraceItem> targetTrace;
     std::map<std::string, double> runtimeValues;
 };
 

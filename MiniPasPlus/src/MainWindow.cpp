@@ -6,6 +6,7 @@
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
+#include <QFrame>
 #include <QMessageBox>
 #include <QRegularExpression>
 #include <QSplitter>
@@ -41,6 +42,7 @@ MainWindow::MainWindow(QWidget* parent)
       recordTable_(nullptr),
       quadrupleTable_(nullptr),
       optimizedQuadrupleTable_(nullptr),
+      targetCodeTable_(nullptr),
       runtimeText_(nullptr) {
     buildUi();
 }
@@ -130,6 +132,16 @@ void MainWindow::buildUi() {
     setupTable(optimizedQuadrupleTable_, {"基本块", "序号", "op", "arg1", "arg2", "result"});
     tabWidget_->addTab(createTablePage("基本块内 DAG 优化后的四元式序列", optimizedQuadrupleTable_), "优化后四元式");
 
+    targetCodeTable_ = new QTableWidget(tabWidget_);
+    setupTable(targetCodeTable_, {"基本块", "四元式", "目标代码", "RDL", "SEM"});
+    targetCodeTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    targetCodeTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    targetCodeTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    targetCodeTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    targetCodeTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    targetCodeTable_->setColumnWidth(1, 240);
+    tabWidget_->addTab(createTablePage("目标代码生成过程跟踪（第9章格式）", targetCodeTable_), "目标代码");
+
     runtimeText_ = new QTextEdit(tabWidget_);
     runtimeText_->setReadOnly(true);
     runtimeText_->setFont(QFont("Consolas", 11));
@@ -140,12 +152,27 @@ void MainWindow::buildUi() {
     splitter->setStretchFactor(0, 1);
     splitter->setStretchFactor(1, 2);
 
-    statusLabel_ = new QLabel("就绪", central);
-    statusLabel_->setMinimumHeight(28);
+    auto* statusPanel = new QFrame(central);
+    statusPanel->setFrameShape(QFrame::StyledPanel);
+    statusPanel->setFrameShadow(QFrame::Plain);
+    auto* statusLayout = new QVBoxLayout(statusPanel);
+    statusLayout->setContentsMargins(8, 2, 8, 2);
+    statusLayout->setSpacing(0);
+    statusLabel_ = new QLabel("就绪", statusPanel);
     statusLabel_->setStyleSheet("color: #333333; font-weight: 600;");
+    statusLabel_->setMinimumHeight(20);
+    statusLabel_->setMaximumHeight(24);
+    statusLayout->addWidget(statusLabel_);
 
-    rootLayout->addWidget(splitter);
-    rootLayout->addWidget(statusLabel_);
+    auto* verticalSplitter = new QSplitter(Qt::Vertical, central);
+    verticalSplitter->addWidget(splitter);
+    verticalSplitter->addWidget(statusPanel);
+    verticalSplitter->setStretchFactor(0, 20);
+    verticalSplitter->setStretchFactor(1, 1);
+    verticalSplitter->setSizes({720, 36});
+    verticalSplitter->setCollapsible(1, true);
+
+    rootLayout->addWidget(verticalSplitter);
     setCentralWidget(central);
 
     connect(compileButton_, &QPushButton::clicked, this, [this]() { compileAndRun(); });
@@ -252,7 +279,7 @@ void MainWindow::setupTable(QTableWidget* table, const QStringList& headers) {
     table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
     table->setAlternatingRowColors(true);
-    table->setFont(QFont("Consolas", 10));
+    table->setFont(QFont("Microsoft YaHei", 10));
 }
 
 void MainWindow::compileAndRun() {
@@ -295,6 +322,7 @@ void MainWindow::clearOutput() {
     recordTable_->setRowCount(0);
     quadrupleTable_->setRowCount(0);
     optimizedQuadrupleTable_->setRowCount(0);
+    targetCodeTable_->setRowCount(0);
     runtimeText_->clear();
     clearSourceHighlight();
     statusLabel_->setText("输出已清空");
@@ -309,6 +337,7 @@ void MainWindow::fillAllTables(const CompileResult& result) {
     fillRecordTable(result);
     fillQuadrupleTable(result);
     fillOptimizedQuadrupleTable(result);
+    fillTargetCodeTable(result);
     fillRuntimeText(result);
 }
 
@@ -757,6 +786,18 @@ void MainWindow::fillOptimizedQuadrupleTable(const CompileResult& result) {
         optimizedQuadrupleTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(quad.arg1)));
         optimizedQuadrupleTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(quad.arg2)));
         optimizedQuadrupleTable_->setItem(row, 5, new QTableWidgetItem(QString::fromStdString(quad.result)));
+    }
+}
+
+void MainWindow::fillTargetCodeTable(const CompileResult& result) {
+    targetCodeTable_->setRowCount(static_cast<int>(result.targetTrace.size()));
+    for (int row = 0; row < static_cast<int>(result.targetTrace.size()); ++row) {
+        const TargetTraceItem& t = result.targetTrace[row];
+        targetCodeTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(t.basicBlock)));
+        targetCodeTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(t.quadruple)));
+        targetCodeTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(t.targetCode)));
+        targetCodeTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(t.rdl)));
+        targetCodeTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(t.sem)));
     }
 }
 
