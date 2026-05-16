@@ -9,9 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
-add_executable(MiniPasPlus
-    src/main.cpp
-    src/MainWindow.cpp
+add_library(MiniPasCore STATIC
     src/CompilerFacade.cpp
     src/Lexer.cpp
     src/Parser.cpp
@@ -19,7 +17,6 @@ add_executable(MiniPasPlus
     src/TypeTable.cpp
     src/Interpreter.cpp
     src/VirtualMachine.cpp
-    include/MainWindow.h
     include/CompilerFacade.h
     include/CompileResult.h
     include/Token.h
@@ -32,6 +29,20 @@ add_executable(MiniPasPlus
     include/VirtualMachine.h
 )
 
-target_include_directories(MiniPasPlus PRIVATE include)
+target_include_directories(MiniPasCore PUBLIC include)
 
-target_link_libraries(MiniPasPlus PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+add_executable(MiniPasPlus
+    src/main.cpp
+    src/MainWindow.cpp
+    include/MainWindow.h
+)
+
+target_include_directories(MiniPasPlus PRIVATE include)
+target_link_libraries(MiniPasPlus PRIVATE MiniPasCore Qt${QT_VERSION_MAJOR}::Widgets)
+
+add_executable(MiniPasCoreCLI
+    src/main_cli.cpp
+)
+
+target_include_directories(MiniPasCoreCLI PRIVATE include)
+target_link_libraries(MiniPasCoreCLI PRIVATE MiniPasCore)
