@@ -19,6 +19,7 @@ public:
 private:
     QPlainTextEdit* sourceEdit_;
     QComboBox* exampleCombo_;
+    QPushButton* openFileButton_;
     QPushButton* compileButton_;
     QPushButton* clearButton_;
     QTabWidget* tabWidget_;
@@ -41,6 +42,7 @@ private:
     QTableWidget* conslTable_;
     QTableWidget* lenlTable_;
     QTableWidget* vallTable_;
+    QTableWidget* rawQuadrupleTable_;
     QTableWidget* quadrupleOptimizeTable_;
     QTableWidget* targetCodeTable_;
     QTableWidget* vmResultTable_;
@@ -68,6 +70,7 @@ private:
     void fillConslTable(const CompileResult& result);
     void fillLenlTable(const CompileResult& result);
     void fillVallTable(const CompileResult& result);
+    void fillRawQuadrupleTable(const CompileResult& result);
     void fillQuadrupleOptimizeTable(const CompileResult& result);
     void fillTargetCodeTable(const CompileResult& result);
     void fillVmResultTable(const CompileResult& result);

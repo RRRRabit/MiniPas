@@ -7,6 +7,8 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QFrame>
+#include <QFile>
+#include <QFileDialog>
 #include <QMessageBox>
 #include <QRegularExpression>
 #include <QSplitter>
@@ -14,6 +16,7 @@
 #include <QTableWidgetItem>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTextStream>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -26,6 +29,7 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
       sourceEdit_(nullptr),
       exampleCombo_(nullptr),
+      openFileButton_(nullptr),
       compileButton_(nullptr),
       clearButton_(nullptr),
       tabWidget_(nullptr),
@@ -47,6 +51,7 @@ MainWindow::MainWindow(QWidget* parent)
       conslTable_(nullptr),
       lenlTable_(nullptr),
       vallTable_(nullptr),
+      rawQuadrupleTable_(nullptr),
       quadrupleOptimizeTable_(nullptr),
       targetCodeTable_(nullptr),
       vmResultTable_(nullptr),
@@ -191,10 +196,12 @@ void MainWindow::buildUi() {
 
     auto* buttonArea = new QWidget(leftPanel);
     auto* buttonLayout = new QGridLayout(buttonArea);
+    openFileButton_ = new QPushButton("打开源文件", buttonArea);
     compileButton_ = new QPushButton("编译并运行", buttonArea);
     clearButton_ = new QPushButton("清空输出", buttonArea);
-    buttonLayout->addWidget(compileButton_, 0, 0);
-    buttonLayout->addWidget(clearButton_, 0, 1);
+    buttonLayout->addWidget(openFileButton_, 0, 0);
+    buttonLayout->addWidget(compileButton_, 0, 1);
+    buttonLayout->addWidget(clearButton_, 0, 2);
 
     leftSplitter->addWidget(sourceGroup);
     leftSplitter->addWidget(buttonArea);
@@ -249,6 +256,16 @@ void MainWindow::buildUi() {
     tabWidget_->addTab(lexPage, "词法分析");
 
     tabWidget_->addTab(createSymbolSystemPage(), "符号表");
+
+    rawQuadrupleTable_ = new QTableWidget(tabWidget_);
+    setupTable(rawQuadrupleTable_, {"序号", "OP", "ARG1", "ARG2", "RESULT"});
+    rawQuadrupleTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    rawQuadrupleTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    rawQuadrupleTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    rawQuadrupleTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    rawQuadrupleTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
+    rawQuadrupleTable_->setColumnWidth(0, 56);
+    tabWidget_->addTab(createTablePage("中间代码原始四元式序列（未优化）", rawQuadrupleTable_), "原始四元式");
 
     quadrupleOptimizeTable_ = new QTableWidget(tabWidget_);
     setupTable(quadrupleOptimizeTable_, {"基本块", "优化前代码", "优化后代码"});
@@ -306,6 +323,22 @@ void MainWindow::buildUi() {
 
     connect(compileButton_, &QPushButton::clicked, this, [this]() { compileAndRun(); });
     connect(clearButton_, &QPushButton::clicked, this, [this]() { clearOutput(); });
+    connect(openFileButton_, &QPushButton::clicked, this, [this]() {
+        QString path = QFileDialog::getOpenFileName(
+            this, "打开源程序文件", QString(), "Source Files (*.pas *.txt);;All Files (*)");
+        if (path.isEmpty()) {
+            return;
+        }
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, "打开失败", "无法读取文件: " + path);
+            return;
+        }
+        QTextStream in(&file);
+        sourceEdit_->setPlainText(in.readAll());
+        statusLabel_->setText("已加载文件: " + path);
+        statusLabel_->setStyleSheet("color: #333333; font-weight: 600;");
+    });
     connect(tokenTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
         if (row < 0 || row >= static_cast<int>(lastResult_.tokens.size())) {
             return;
@@ -489,6 +522,7 @@ void MainWindow::clearOutput() {
     conslTable_->setRowCount(0);
     lenlTable_->setRowCount(0);
     vallTable_->setRowCount(0);
+    rawQuadrupleTable_->setRowCount(0);
     quadrupleOptimizeTable_->setRowCount(0);
     targetCodeTable_->setRowCount(0);
     vmResultTable_->setRowCount(0);
@@ -504,6 +538,7 @@ void MainWindow::fillAllTables(const CompileResult& result) {
     fillKeywordAndDelimiterTables(result);
     fillIdentifierAndConstantTables(result);
     fillSymbolTable(result);
+    fillRawQuadrupleTable(result);
     fillQuadrupleOptimizeTable(result);
     fillTargetCodeTable(result);
     fillVmResultTable(result);
@@ -997,6 +1032,18 @@ void MainWindow::fillVmResultTable(const CompileResult& result) {
         vmResultTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(item.first)));
         vmResultTable_->setItem(row, 1, new QTableWidgetItem(QString::number(item.second, 'g', 12)));
         ++row;
+    }
+}
+
+void MainWindow::fillRawQuadrupleTable(const CompileResult& result) {
+    rawQuadrupleTable_->setRowCount(static_cast<int>(result.quadruples.size()));
+    for (int i = 0; i < static_cast<int>(result.quadruples.size()); ++i) {
+        const Quadruple& q = result.quadruples[i];
+        rawQuadrupleTable_->setItem(i, 0, new QTableWidgetItem(QString::number(i)));
+        rawQuadrupleTable_->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(q.op)));
+        rawQuadrupleTable_->setItem(i, 2, new QTableWidgetItem(QString::fromStdString(q.arg1)));
+        rawQuadrupleTable_->setItem(i, 3, new QTableWidgetItem(QString::fromStdString(q.arg2)));
+        rawQuadrupleTable_->setItem(i, 4, new QTableWidgetItem(QString::fromStdString(q.result)));
     }
 }
 

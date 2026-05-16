@@ -51,10 +51,12 @@ void Parser::parseProgram() {
     Token programName = consumeIdentifier("program 后面应是程序名标识符");
     programName_ = programName.lexeme;
     symbolTable_.add({programName_, "program", "program", -1, 0});
+    emit("program", programName_, "_", "_");
 
     parseDeclPart();
     parseCompoundStmt();
     consume(TokenType::DELIMITER, ".", "程序结尾缺少 .");
+    emit("end", programName_, "_", "_");
 }
 
 // DECL_PART -> TYPE_DECL_PART FUNCTION_DECL_PART VAR_DECL_PART
