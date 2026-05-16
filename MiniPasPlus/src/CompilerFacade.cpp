@@ -2,7 +2,9 @@
 #include "Interpreter.h"
 #include "Lexer.h"
 #include "Parser.h"
+#include "VirtualMachine.h"
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstdlib>
 #include <exception>
@@ -525,6 +527,7 @@ std::vector<std::string> generateTargetCodes(const std::vector<Quadruple>& quads
 
 struct TargetGenResult {
     std::vector<std::string> codes;
+    std::vector<VMInstruction> instructions;
     std::vector<TargetTraceItem> trace;
 };
 
@@ -533,8 +536,10 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
                                     const std::vector<Symbol>& symbols) {
     struct Inst {
         std::string op;
-        std::string arg;
-        int target = -1; // for FJ/JMP
+        std::string a;
+        std::string b;
+        std::string c;
+        int target = -1; // for FJ/JMP label address
     };
 
     std::vector<Inst> insts;
@@ -558,8 +563,8 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
     int pendingWhMark = -1;
     int nextArgSlot = 0;
 
-    auto emit = [&](const std::string& op, const std::string& arg, int target = -1) {
-        insts.push_back({op, arg, target});
+    auto emit = [&](const std::string& op, const std::string& a, const std::string& b, const std::string& c, int target = -1) {
+        insts.push_back({op, a, b, c, target});
         return static_cast<int>(insts.size()) - 1;
     };
     auto quadText = [&](int i, const Quadruple& q) {
@@ -574,21 +579,21 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
         for (int i = begin; i <= realEnd; ++i) {
             const Inst& in = insts[i];
             if (!s.empty()) s += " ; ";
-            s += circledNumber(i + 1);
-            if (in.op == "FJ R" || in.op == "JMP _") {
-                int t = (in.target >= 0 ? in.target + 1 : i + 1);
-                s += in.op + ", " + circledNumber(t);
-            } else if (in.op == "RET") {
-                s += "RET";
-            } else {
-                s += in.op + ", " + in.arg;
+            std::string showA = in.a;
+            if ((in.op == "FJ" || in.op == "TJ") && in.target >= 0) {
+                showA = in.a;
             }
+            std::string showB = in.b;
+            if ((in.op == "FJ" || in.op == "TJ" || in.op == "JMP") && in.target >= 0) {
+                showB = "L" + std::to_string(in.target);
+            }
+            s += in.op + " " + showA + ", " + showB + ", " + in.c;
         }
         return s;
     };
     auto storeReg = [&]() {
         if (!rdl.empty() && isVariableOperand(rdl)) {
-            emit("ST R", rdl);
+            emit("ST", "R0", rdl, "_");
         }
         rdl.clear();
     };
@@ -596,7 +601,7 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
         if (rdl == x) {
             return;
         }
-        emit("LD R", x);
+        emit("LD", "R0", x, "_");
         rdl = x;
     };
 
@@ -639,14 +644,14 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
 
         if (!targetOp.empty()) {
             loadToReg(q.arg1);
-            emit(targetOp + " R", q.arg2);
+            emit(targetOp, "R0", "R0", q.arg2);
             rdl = q.result;
         } else if (q.op == ":=") {
             loadToReg(q.arg1);
             rdl = q.result;
         } else if (q.op == "if" || q.op == "do") {
             loadToReg(q.arg1);
-            int p = emit("FJ R", "_", -1);
+            int p = emit("FJ", "R0", "_", "_", -1);
             sem.push_back(p);
             pushedAddr = p;
             rdl.clear();
@@ -658,7 +663,7 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
                 sem.pop_back();
                 poppedAddr = fjPos;
             }
-            int jmpPos = emit("JMP _", "_", -1);
+            int jmpPos = emit("JMP", "_", "_", "_", -1);
             if (fjPos >= 0) {
                 insts[fjPos].target = jmpPos + 1;
             }
@@ -689,25 +694,23 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
                 sem.pop_back();
                 poppedAddr2 = whPos;
             }
-            int j = emit("JMP _", "_", whPos);
+            int j = emit("JMP", "_", "_", "_", whPos);
             if (doPos >= 0) {
                 insts[doPos].target = j + 1;
             }
         } else if (q.op == "param") {
-            emit("ST", q.arg1 + ", ARG" + std::to_string(nextArgSlot));
+            emit("ARG", q.arg1, "_", "_");
             ++nextArgSlot;
         } else if (q.op == "call") {
-            emit("CALL", q.arg1);
+            emit("CALL", q.arg1, q.arg2, "_");
             if (q.result != "_" && !q.result.empty()) {
-                emit("LD R", "RET");
-                emit("ST R", q.result);
+                emit("MOVRET", "R0", "_", "_");
+                emit("ST", "R0", q.result, "_");
                 rdl.clear();
             }
             nextArgSlot = 0;
         } else if (q.op == "ret") {
-            emit("LD R", q.arg1);
-            emit("ST R", "RET");
-            emit("RET", "_");
+            emit("RET", q.arg1, "_", "_");
             rdl.clear();
         }
 
@@ -751,20 +754,196 @@ TargetGenResult generateTargetTrace(const std::vector<Quadruple>& quads,
     }
 
     out.codes.reserve(insts.size());
+    out.instructions.reserve(insts.size());
     for (int i = 0; i < static_cast<int>(insts.size()); ++i) {
         const Inst& in = insts[i];
-        std::string line = circledNumber(i + 1);
-        if (in.op == "FJ R" || in.op == "JMP _") {
-            int t = in.target >= 0 ? (in.target + 1) : (i + 1);
-            line += in.op + ", " + circledNumber(t);
-        } else if (in.op == "RET") {
-            line += "RET";
-        } else {
-            line += in.op + ", " + in.arg;
+        std::string showB = in.b;
+        if ((in.op == "FJ" || in.op == "TJ" || in.op == "JMP") && in.target >= 0) {
+            showB = "L" + std::to_string(in.target);
         }
+        std::string line = in.op + " " + in.a + ", " + showB + ", " + in.c;
         out.codes.push_back(line);
+        out.instructions.push_back({in.op, in.a, showB, in.c});
     }
+    out.codes.push_back("HALT _, _, _");
+    out.instructions.push_back({"HALT", "_", "_", "_"});
     return out;
+}
+
+std::vector<VMInstruction> generateVmInstructions(const std::vector<Quadruple>& quads,
+                                                  const std::vector<FunctionInfo>& functions) {
+    struct PendingInst {
+        VMInstruction inst;
+        int jumpTargetQuad = -1;
+        std::string callTargetFunc;
+    };
+
+    std::map<int, int> ifToIe;
+    std::map<int, int> ifToEl;
+    std::vector<std::pair<int, int>> ifStack;
+    std::vector<int> whStack;
+    std::vector<std::pair<int, int>> doStack;
+    std::map<int, int> doToWe;
+    std::map<int, int> weToWh;
+
+    for (int i = 0; i < static_cast<int>(quads.size()); ++i) {
+        const Quadruple& q = quads[i];
+        if (q.op == "if") {
+            ifStack.push_back({i, -1});
+        } else if (q.op == "el") {
+            if (!ifStack.empty()) {
+                ifStack.back().second = i;
+            }
+        } else if (q.op == "ie") {
+            if (!ifStack.empty()) {
+                ifToIe[ifStack.back().first] = i;
+                ifToEl[ifStack.back().first] = ifStack.back().second;
+                ifStack.pop_back();
+            }
+        } else if (q.op == "wh") {
+            whStack.push_back(i);
+        } else if (q.op == "do") {
+            int wh = whStack.empty() ? -1 : whStack.back();
+            doStack.push_back({i, wh});
+        } else if (q.op == "we") {
+            if (!doStack.empty()) {
+                auto [doIdx, whIdx] = doStack.back();
+                doStack.pop_back();
+                doToWe[doIdx] = i;
+                if (whIdx >= 0) {
+                    weToWh[i] = whIdx;
+                }
+            }
+            if (!whStack.empty()) {
+                whStack.pop_back();
+            }
+        }
+    }
+
+    std::vector<PendingInst> pending;
+    std::vector<int> quadToInst(quads.size(), -1);
+
+    auto emit = [&](const VMInstruction& inst, int jumpQuad = -1, const std::string& callFunc = "") {
+        pending.push_back({inst, jumpQuad, callFunc});
+    };
+
+    for (int i = 0; i < static_cast<int>(quads.size()); ++i) {
+        quadToInst[i] = static_cast<int>(pending.size());
+        const Quadruple& q = quads[i];
+        std::string vmOp = opToTarget(q.op);
+        if (!vmOp.empty()) {
+            emit({vmOp, q.result, q.arg1, q.arg2});
+        } else if (q.op == ":=") {
+            emit({"MOV", q.result, q.arg1, "_"});
+        } else if (q.op == "if") {
+            int falseTarget = -1;
+            auto el = ifToEl.find(i);
+            if (el != ifToEl.end() && el->second >= 0) {
+                falseTarget = el->second + 1;
+            } else {
+                auto ie = ifToIe.find(i);
+                if (ie != ifToIe.end()) {
+                    falseTarget = ie->second;
+                }
+            }
+            emit({"FJ", q.arg1, "_", "_"}, falseTarget);
+        } else if (q.op == "el") {
+            int ieTarget = -1;
+            for (const auto& [ifIdx, elIdx] : ifToEl) {
+                if (elIdx == i) {
+                    auto itIe = ifToIe.find(ifIdx);
+                    if (itIe != ifToIe.end()) {
+                        ieTarget = itIe->second;
+                    }
+                    break;
+                }
+            }
+            emit({"JMP", "_", "_", "_"}, ieTarget);
+        } else if (q.op == "do") {
+            int falseTarget = -1;
+            auto we = doToWe.find(i);
+            if (we != doToWe.end()) {
+                falseTarget = we->second + 1;
+            }
+            emit({"FJ", q.arg1, "_", "_"}, falseTarget);
+        } else if (q.op == "we") {
+            auto wh = weToWh.find(i);
+            int condEntry = (wh == weToWh.end()) ? -1 : (wh->second + 1);
+            emit({"JMP", "_", "_", "_"}, condEntry);
+        } else if (q.op == "param") {
+            emit({"ARG", q.arg1, "_", "_"});
+        } else if (q.op == "call") {
+            emit({"CALL", "_", q.arg2, "_"}, -1, q.arg1);
+            if (q.result != "_" && !q.result.empty()) {
+                emit({"MOVRET", q.result, "_", "_"});
+            }
+        } else if (q.op == "ret") {
+            emit({"RET", q.arg1, "_", "_"});
+        }
+    }
+
+    std::unordered_map<std::string, int> funcEntryInst;
+    for (const auto& f : functions) {
+        if (f.entryQuad >= 0 && f.entryQuad < static_cast<int>(quadToInst.size())) {
+            int instIdx = quadToInst[f.entryQuad];
+            if (instIdx >= 0) {
+                funcEntryInst[f.name] = instIdx;
+            }
+        }
+    }
+
+    int funcCount = static_cast<int>(functions.size());
+    int seenRet = 0;
+    int mainEntryQuad = 0;
+    for (int i = 0; i < static_cast<int>(quads.size()); ++i) {
+        if (quads[i].op == "ret") {
+            ++seenRet;
+            if (seenRet == funcCount) {
+                mainEntryQuad = i + 1;
+                break;
+            }
+        }
+    }
+    int mainEntryInst = (mainEntryQuad >= 0 && mainEntryQuad < static_cast<int>(quadToInst.size()))
+        ? quadToInst[mainEntryQuad]
+        : 0;
+
+    std::vector<VMInstruction> result;
+    result.reserve(pending.size() + 2);
+    result.push_back({"JMP", "L" + std::to_string(mainEntryInst + 1), "_", "_"});
+    for (const auto& p : pending) {
+        VMInstruction inst = p.inst;
+        if (p.jumpTargetQuad >= 0) {
+            int targetLabel = -1;
+            if (p.jumpTargetQuad < static_cast<int>(quadToInst.size())) {
+                int t = quadToInst[p.jumpTargetQuad];
+                if (t >= 0) {
+                    targetLabel = t + 1; // +1: result[0] 是入口跳转
+                }
+            } else if (p.jumpTargetQuad == static_cast<int>(quadToInst.size())) {
+                // 跳转到“最后一条四元式之后”，对应 VM 末尾 HALT。
+                targetLabel = static_cast<int>(pending.size()) + 1;
+            }
+            if (targetLabel >= 0) {
+                if (inst.op == "JMP") {
+                    inst.a = "L" + std::to_string(targetLabel);
+                } else {
+                    inst.b = "L" + std::to_string(targetLabel);
+                }
+            }
+        }
+        if (inst.op == "CALL") {
+            auto it = funcEntryInst.find(p.callTargetFunc);
+            if (it != funcEntryInst.end()) {
+                inst.a = "L" + std::to_string(it->second + 1);
+            } else {
+                inst.a = "L0";
+            }
+        }
+        result.push_back(inst);
+    }
+    result.push_back({"HALT", "_", "_", "_"});
+    return result;
 }
 
 } // namespace
@@ -810,12 +989,27 @@ CompileResult CompilerFacade::compileAndRun(const std::string& sourceCode) {
         std::vector<BasicBlock> optimizedBlocks = buildBasicBlocksFromQuads(finalResult.optimizedQuadruples);
         TargetGenResult tg = generateTargetTrace(finalResult.optimizedQuadruples, optimizedBlocks, finalResult.symbols);
         finalResult.targetCodes = std::move(tg.codes);
+        finalResult.vmInstructions = generateVmInstructions(finalResult.quadruples, finalResult.functionTable);
         finalResult.targetTrace = std::move(tg.trace);
 
-        // 3. 解释执行：运行四元式，得到最终变量值。
-        Interpreter interpreter;
-        interpreter.execute(finalResult.quadruples);
-        finalResult.runtimeValues = interpreter.values();
+        // 3. 运行层执行：优先使用 VM，失败时回退到四元式解释器。
+        try {
+            auto vmStart = std::chrono::steady_clock::now();
+            VirtualMachine vm;
+            vm.execute(finalResult.vmInstructions);
+            auto vmEnd = std::chrono::steady_clock::now();
+            finalResult.vmRuntimeMs = std::chrono::duration<double, std::milli>(vmEnd - vmStart).count();
+            finalResult.vmUsed = true;
+            finalResult.runtimeValues = vm.values();
+            finalResult.vmErrorMessage.clear();
+        } catch (const std::exception& vmEx) {
+            finalResult.vmUsed = false;
+            finalResult.vmFallbackUsed = true;
+            finalResult.vmErrorMessage = vmEx.what();
+            Interpreter interpreter;
+            interpreter.execute(finalResult.quadruples);
+            finalResult.runtimeValues = interpreter.values();
+        }
 
         finalResult.success = true;
     } catch (const std::exception& ex) {

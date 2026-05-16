@@ -18,6 +18,7 @@ add_executable(MiniPasPlus
     src/SymbolTable.cpp
     src/TypeTable.cpp
     src/Interpreter.cpp
+    src/VirtualMachine.cpp
     include/MainWindow.h
     include/CompilerFacade.h
     include/CompileResult.h
@@ -28,6 +29,7 @@ add_executable(MiniPasPlus
     include/TypeTable.h
     include/Quadruple.h
     include/Interpreter.h
+    include/VirtualMachine.h
 )
 
 target_include_directories(MiniPasPlus PRIVATE include)

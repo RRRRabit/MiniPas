@@ -49,7 +49,7 @@ MainWindow::MainWindow(QWidget* parent)
       vallTable_(nullptr),
       quadrupleOptimizeTable_(nullptr),
       targetCodeTable_(nullptr),
-      runtimeText_(nullptr),
+      vmResultTable_(nullptr),
       highlightedTokenRow_(-1) {
     buildUi();
 }
@@ -270,10 +270,11 @@ void MainWindow::buildUi() {
     targetCodeTable_->setColumnWidth(1, 240);
     tabWidget_->addTab(createTablePage("目标代码生成过程跟踪（第9章格式）", targetCodeTable_), "目标代码");
 
-    runtimeText_ = new QTextEdit(tabWidget_);
-    runtimeText_->setReadOnly(true);
-    runtimeText_->setFont(QFont("Consolas", 11));
-    tabWidget_->addTab(createRuntimePage("四元式解释执行后的最终变量值"), "解释执行结果");
+    vmResultTable_ = new QTableWidget(tabWidget_);
+    setupTable(vmResultTable_, {"变量名", "值"});
+    vmResultTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    vmResultTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    tabWidget_->addTab(createTablePage("虚拟机执行后的最终变量值", vmResultTable_), "VM运行结果");
 
     splitter->addWidget(leftPanel);
     splitter->addWidget(tabWidget_);
@@ -425,16 +426,6 @@ QWidget* MainWindow::createTablePage(const QString& description, QTableWidget* t
     return page;
 }
 
-QWidget* MainWindow::createRuntimePage(const QString& description) {
-    auto* page = new QWidget(tabWidget_);
-    auto* layout = new QVBoxLayout(page);
-    auto* label = new QLabel(description, page);
-    label->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
-    layout->addWidget(label);
-    layout->addWidget(runtimeText_);
-    return page;
-}
-
 void MainWindow::setupTable(QTableWidget* table, const QStringList& headers) {
     table->setColumnCount(headers.size());
     table->setHorizontalHeaderLabels(headers);
@@ -500,7 +491,7 @@ void MainWindow::clearOutput() {
     vallTable_->setRowCount(0);
     quadrupleOptimizeTable_->setRowCount(0);
     targetCodeTable_->setRowCount(0);
-    runtimeText_->clear();
+    vmResultTable_->setRowCount(0);
     clearSourceHighlight();
     highlightedTokenRow_ = -1;
     statusLabel_->setText("输出已清空");
@@ -515,7 +506,7 @@ void MainWindow::fillAllTables(const CompileResult& result) {
     fillSymbolTable(result);
     fillQuadrupleOptimizeTable(result);
     fillTargetCodeTable(result);
-    fillRuntimeText(result);
+    fillVmResultTable(result);
 }
 
 void MainWindow::fillTokenTable(const CompileResult& result) {
@@ -944,18 +935,6 @@ void MainWindow::fillQuadrupleOptimizeTable(const CompileResult& result) {
     }
 }
 
-void MainWindow::fillRuntimeText(const CompileResult& result) {
-    QString text;
-    for (const auto& item : result.runtimeValues) {
-        text += QString::fromStdString(item.first)
-            + " = "
-            + QString::number(item.second, 'g', 12)
-            + "\n";
-    }
-    runtimeText_->setPlainText(text);
-}
-
-
 void MainWindow::fillTargetCodeTable(const CompileResult& result) {
     targetCodeTable_->setRowCount(static_cast<int>(result.targetTrace.size()));
     targetCodeTable_->clearSpans();
@@ -990,6 +969,34 @@ void MainWindow::fillTargetCodeTable(const CompileResult& result) {
             }
         }
         start = end;
+    }
+}
+
+void MainWindow::fillVmResultTable(const CompileResult& result) {
+    const int summaryRows = 5;
+    vmResultTable_->setRowCount(summaryRows + static_cast<int>(result.runtimeValues.size()));
+
+    vmResultTable_->setItem(0, 0, new QTableWidgetItem("执行状态"));
+    vmResultTable_->setItem(0, 1, new QTableWidgetItem(result.vmFallbackUsed ? "已回退解释器" : "VM执行成功"));
+
+    vmResultTable_->setItem(1, 0, new QTableWidgetItem("执行器"));
+    vmResultTable_->setItem(1, 1, new QTableWidgetItem(result.vmFallbackUsed ? "Interpreter(回退)" : "VirtualMachine"));
+
+    vmResultTable_->setItem(2, 0, new QTableWidgetItem("运行时长(ms)"));
+    vmResultTable_->setItem(2, 1, new QTableWidgetItem(QString::number(result.vmRuntimeMs, 'f', 3)));
+
+    vmResultTable_->setItem(3, 0, new QTableWidgetItem("报错信息"));
+    vmResultTable_->setItem(3, 1, new QTableWidgetItem(
+        result.vmErrorMessage.empty() ? "无报错" : QString::fromStdString(result.vmErrorMessage)));
+
+    vmResultTable_->setItem(4, 0, new QTableWidgetItem("---- 变量结果 ----"));
+    vmResultTable_->setItem(4, 1, new QTableWidgetItem(""));
+
+    int row = summaryRows;
+    for (const auto& item : result.runtimeValues) {
+        vmResultTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(item.first)));
+        vmResultTable_->setItem(row, 1, new QTableWidgetItem(QString::number(item.second, 'g', 12)));
+        ++row;
     }
 }
 

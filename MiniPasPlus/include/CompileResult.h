@@ -58,6 +58,14 @@ struct TargetTraceItem {
     std::string sem;
 };
 
+// 运行层 VM 指令：统一使用 OP/A/B/C 四字段，供后续虚拟机直接执行。
+struct VMInstruction {
+    std::string op;
+    std::string a;
+    std::string b;
+    std::string c;
+};
+
 // 编译结果：把前端各阶段产生的数据统一打包，方便控制台或 GUI 展示。
 struct CompileResult {
     bool success = false;
@@ -78,7 +86,12 @@ struct CompileResult {
     std::vector<Quadruple> optimizedQuadruples;
     std::vector<BasicBlock> basicBlocks;
     std::vector<std::string> targetCodes;
+    std::vector<VMInstruction> vmInstructions;
     std::vector<TargetTraceItem> targetTrace;
+    bool vmUsed = false;
+    bool vmFallbackUsed = false;
+    double vmRuntimeMs = 0.0;
+    std::string vmErrorMessage;
     std::map<std::string, double> runtimeValues;
 };
 

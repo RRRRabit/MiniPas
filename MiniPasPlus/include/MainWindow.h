@@ -9,7 +9,6 @@
 #include <QComboBox>
 #include <QTableWidget>
 #include <QTabWidget>
-#include <QTextEdit>
 #include <QVBoxLayout>
 
 // Qt Widgets 主窗口：只负责界面展示，不包含编译器核心逻辑。
@@ -44,7 +43,7 @@ private:
     QTableWidget* vallTable_;
     QTableWidget* quadrupleOptimizeTable_;
     QTableWidget* targetCodeTable_;
-    QTextEdit* runtimeText_;
+    QTableWidget* vmResultTable_;
     CompileResult lastResult_;
     int highlightedTokenRow_ = -1;
     QString highlightedLexeme_;
@@ -53,7 +52,6 @@ private:
     void buildUi();
     QWidget* createTablePage(const QString& description, QTableWidget* table);
     QWidget* createSymbolSystemPage();
-    QWidget* createRuntimePage(const QString& description);
     void setupTable(QTableWidget* table, const QStringList& headers);
     void compileAndRun();
     void clearOutput();
@@ -72,7 +70,7 @@ private:
     void fillVallTable(const CompileResult& result);
     void fillQuadrupleOptimizeTable(const CompileResult& result);
     void fillTargetCodeTable(const CompileResult& result);
-    void fillRuntimeText(const CompileResult& result);
+    void fillVmResultTable(const CompileResult& result);
     void setStatusSuccess(const QString& message);
     void setStatusError(const QString& message);
     QString typeRef(const std::string& typeName) const;
