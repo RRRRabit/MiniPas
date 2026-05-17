@@ -9,6 +9,7 @@
 #include <QFrame>
 #include <QFile>
 #include <QFileDialog>
+#include <QColor>
 #include <QMessageBox>
 #include <QRegularExpression>
 #include <QSplitter>
@@ -19,6 +20,7 @@
 #include <QTextStream>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QSizePolicy>
 #include <algorithm>
 #include <map>
 #include <set>
@@ -55,6 +57,9 @@ MainWindow::MainWindow(QWidget* parent)
       quadrupleOptimizeTable_(nullptr),
       targetCodeTable_(nullptr),
       vmResultTable_(nullptr),
+      parserTraceTreeWidget_(nullptr),
+      parserStepTable_(nullptr),
+      parserActionTable_(nullptr),
       highlightedTokenRow_(-1) {
     buildUi();
 }
@@ -293,6 +298,60 @@ void MainWindow::buildUi() {
     vmResultTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     tabWidget_->addTab(createTablePage("虚拟机执行后的最终变量值", vmResultTable_), "VM运行结果");
 
+    {
+        auto* tracePage = new QWidget(tabWidget_);
+        auto* traceLayout = new QVBoxLayout(tracePage);
+        traceLayout->setContentsMargins(9, 9, 9, 9);
+        traceLayout->setSpacing(6);
+        auto* traceTitle = new QLabel("递归子程序分析过程", tracePage);
+        traceTitle->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
+        traceTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        traceTitle->setMaximumHeight(28);
+        traceLayout->addWidget(traceTitle);
+
+        auto* traceSplitter = new QSplitter(Qt::Horizontal, tracePage);
+        parserTraceTreeWidget_ = new QTreeWidget(traceSplitter);
+        parserTraceTreeWidget_->setHeaderLabels({"递归调用树"});
+        parserTraceTreeWidget_->setAlternatingRowColors(true);
+
+        auto* traceRightPanel = new QWidget(traceSplitter);
+        auto* traceRightLayout = new QVBoxLayout(traceRightPanel);
+        parserStepTable_ = new QTableWidget(traceRightPanel);
+        setupTable(parserStepTable_, {"步骤日志"});
+        parserStepTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+        parserActionTable_ = new QTableWidget(traceRightPanel);
+        setupTable(parserActionTable_, {"语义动作日志"});
+        parserActionTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+        traceRightLayout->addWidget(new QLabel("Token匹配与预测步骤", traceRightPanel));
+        traceRightLayout->addWidget(parserStepTable_);
+        traceRightLayout->addWidget(new QLabel("四元式与临时变量动作", traceRightPanel));
+        traceRightLayout->addWidget(parserActionTable_);
+
+        traceSplitter->addWidget(parserTraceTreeWidget_);
+        traceSplitter->addWidget(traceRightPanel);
+        traceSplitter->setStretchFactor(0, 1);
+        traceSplitter->setStretchFactor(1, 1);
+        traceLayout->addWidget(traceSplitter);
+        traceLayout->setStretch(0, 0);
+        traceLayout->setStretch(1, 1);
+        tabWidget_->insertTab(2, tracePage, "递归分析过程");
+
+        connect(parserTraceTreeWidget_, &QTreeWidget::itemSelectionChanged, this, [this]() {
+            auto items = parserTraceTreeWidget_->selectedItems();
+            if (items.isEmpty()) {
+                highlightParserRowsByRule("");
+                return;
+            }
+            QString text = items.first()->text(0).trimmed();
+            if (text.startsWith("入口 子程序 ")) {
+                text = text.mid(QString("入口 子程序 ").size());
+            } else if (text.startsWith("出口 子程序 ")) {
+                text = text.mid(QString("出口 子程序 ").size());
+            }
+            highlightParserRowsByRule(text.trimmed());
+        });
+    }
+
     splitter->addWidget(leftPanel);
     splitter->addWidget(tabWidget_);
     splitter->setStretchFactor(0, 1);
@@ -526,6 +585,15 @@ void MainWindow::clearOutput() {
     quadrupleOptimizeTable_->setRowCount(0);
     targetCodeTable_->setRowCount(0);
     vmResultTable_->setRowCount(0);
+    if (parserTraceTreeWidget_ != nullptr) {
+        parserTraceTreeWidget_->clear();
+    }
+    if (parserStepTable_ != nullptr) {
+        parserStepTable_->setRowCount(0);
+    }
+    if (parserActionTable_ != nullptr) {
+        parserActionTable_->setRowCount(0);
+    }
     clearSourceHighlight();
     highlightedTokenRow_ = -1;
     statusLabel_->setText("输出已清空");
@@ -542,6 +610,7 @@ void MainWindow::fillAllTables(const CompileResult& result) {
     fillQuadrupleOptimizeTable(result);
     fillTargetCodeTable(result);
     fillVmResultTable(result);
+    fillParserTraceView(result);
 }
 
 void MainWindow::fillTokenTable(const CompileResult& result) {
@@ -1035,6 +1104,102 @@ void MainWindow::fillVmResultTable(const CompileResult& result) {
     }
 }
 
+void MainWindow::fillParserTraceView(const CompileResult& result) {
+    if (parserTraceTreeWidget_ != nullptr) {
+        parserTraceTreeWidget_->clear();
+        std::vector<QTreeWidgetItem*> stack;
+        for (const auto& lineStd : result.parserTraceTree) {
+            QString line = QString::fromStdString(lineStd);
+            int spaces = 0;
+            while (spaces < line.size() && line[spaces] == ' ') {
+                ++spaces;
+            }
+            int depth = spaces / 2;
+            QString text = line.mid(spaces);
+            auto* item = new QTreeWidgetItem(QStringList{text});
+            QString ruleName = text;
+            if (ruleName.startsWith("入口 子程序 ")) {
+                ruleName = ruleName.mid(QString("入口 子程序 ").size()).trimmed();
+            } else if (ruleName.startsWith("出口 子程序 ")) {
+                ruleName = ruleName.mid(QString("出口 子程序 ").size()).trimmed();
+            }
+            item->setData(0, Qt::UserRole, ruleName);
+            while (static_cast<int>(stack.size()) > depth) {
+                stack.pop_back();
+            }
+            if (stack.empty()) {
+                parserTraceTreeWidget_->addTopLevelItem(item);
+            } else {
+                stack.back()->addChild(item);
+            }
+            stack.push_back(item);
+        }
+        parserTraceTreeWidget_->expandAll();
+    }
+
+    if (parserStepTable_ != nullptr) {
+        parserStepTable_->setRowCount(static_cast<int>(result.parserStepLog.size()));
+        for (int row = 0; row < static_cast<int>(result.parserStepLog.size()); ++row) {
+            auto* item = new QTableWidgetItem(QString::fromStdString(result.parserStepLog[row]));
+            if (row < static_cast<int>(result.parserStepRuleNames.size())) {
+                item->setData(Qt::UserRole, QString::fromStdString(result.parserStepRuleNames[row]));
+            }
+            parserStepTable_->setItem(row, 0, item);
+        }
+    }
+
+    if (parserActionTable_ != nullptr) {
+        parserActionTable_->setRowCount(static_cast<int>(result.parserActionLog.size()));
+        for (int row = 0; row < static_cast<int>(result.parserActionLog.size()); ++row) {
+            auto* item = new QTableWidgetItem(QString::fromStdString(result.parserActionLog[row]));
+            if (row < static_cast<int>(result.parserActionRuleNames.size())) {
+                item->setData(Qt::UserRole, QString::fromStdString(result.parserActionRuleNames[row]));
+            }
+            parserActionTable_->setItem(row, 0, item);
+        }
+    }
+
+    highlightParserRowsByRule("");
+}
+
+void MainWindow::highlightParserRowsByRule(const QString& ruleName) {
+    QString firstMatchedStepText;
+    auto paintTable = [&](QTableWidget* table) {
+        if (table == nullptr) {
+            return;
+        }
+        for (int row = 0; row < table->rowCount(); ++row) {
+            QTableWidgetItem* item = table->item(row, 0);
+            if (item == nullptr) {
+                continue;
+            }
+            QString itemRule = item->data(Qt::UserRole).toString().trimmed();
+            bool hit = !ruleName.isEmpty() && itemRule == ruleName;
+            item->setBackground(hit ? QColor(255, 248, 220) : QColor(Qt::white));
+            if (hit && table == parserStepTable_ && firstMatchedStepText.isEmpty()) {
+                firstMatchedStepText = item->text();
+            }
+        }
+    };
+
+    paintTable(parserStepTable_);
+    paintTable(parserActionTable_);
+
+    if (ruleName.isEmpty()) {
+        return;
+    }
+
+    QRegularExpression posRe("@\\((\\d+),(\\d+)\\)");
+    QRegularExpressionMatch match = posRe.match(firstMatchedStepText);
+    if (!match.hasMatch()) {
+        return;
+    }
+
+    int line = match.captured(1).toInt();
+    int column = match.captured(2).toInt();
+    highlightTokenAt(line, column, "x");
+}
+
 void MainWindow::fillRawQuadrupleTable(const CompileResult& result) {
     rawQuadrupleTable_->setRowCount(static_cast<int>(result.quadruples.size()));
     for (int i = 0; i < static_cast<int>(result.quadruples.size()); ++i) {
@@ -1189,37 +1354,6 @@ void MainWindow::highlightTokenAt(int line, int column, const QString& lexeme) {
     QTextCursor viewCursor = cursor;
     viewCursor.clearSelection();
     sourceEdit_->setTextCursor(viewCursor);
-    highlightedLexeme_.clear();
-}
-
-void MainWindow::highlightWordOccurrences(const QString& word) {
-    clearSourceHighlight();
-    if (word.isEmpty()) {
-        return;
-    }
-
-    QList<QTextEdit::ExtraSelection> selections;
-    QTextDocument* doc = sourceEdit_->document();
-    QTextCursor cursor(doc);
-    QRegularExpression re(QString("\\b%1\\b").arg(QRegularExpression::escape(word)));
-
-    while (!cursor.isNull() && !cursor.atEnd()) {
-        cursor = doc->find(re, cursor);
-        if (!cursor.isNull()) {
-            QTextEdit::ExtraSelection sel;
-            sel.cursor = cursor;
-            sel.format.setBackground(QColor("#c8e6c9"));
-            sel.format.setForeground(QColor("#0f172a"));
-            selections.append(sel);
-        }
-    }
-
-    sourceEdit_->setExtraSelections(selections);
-    if (!selections.isEmpty()) {
-        QTextCursor viewCursor = selections.first().cursor;
-        viewCursor.clearSelection();
-        sourceEdit_->setTextCursor(viewCursor);
-    }
     highlightedLexeme_.clear();
 }
 

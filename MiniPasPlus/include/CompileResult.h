@@ -88,11 +88,15 @@ struct CompileResult {
     std::vector<std::string> targetCodes;
     std::vector<VMInstruction> vmInstructions;
     std::vector<TargetTraceItem> targetTrace;
-    bool vmUsed = false;
     bool vmFallbackUsed = false;
     double vmRuntimeMs = 0.0;
     std::string vmErrorMessage;
     std::map<std::string, double> runtimeValues;
+    std::vector<std::string> parserTraceTree;
+    std::vector<std::string> parserStepLog;
+    std::vector<std::string> parserActionLog;
+    std::vector<std::string> parserStepRuleNames;
+    std::vector<std::string> parserActionRuleNames;
 };
 
 #endif

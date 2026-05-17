@@ -7,14 +7,15 @@
 #include <vector>
 
 // 简单栈式 VM：执行结构化 VMInstruction 指令，并输出最终变量值。
-class VirtualMachine {
+class VirtualMachine
+{
 public:
     void execute(const std::vector<VMInstruction>& program);
     const std::map<std::string, double>& values() const;
 
 private:
-    struct Frame {
-        std::string returnDest;
+    struct Frame
+    {
         int returnPc = -1;
         std::map<std::string, double> locals;
     };
@@ -29,6 +30,20 @@ private:
     bool isNumber(const std::string& text) const;
     bool isTrue(double v) const;
     int parseLabel(const std::string& text) const;
+
+    bool executeDataTransferInstruction(const VMInstruction& instruction, int& programCounter);
+    bool executeBinaryInstruction(const VMInstruction& instruction, int& programCounter);
+    bool executeUnaryInstruction(const VMInstruction& instruction, int& programCounter);
+    bool executeJumpInstruction(const VMInstruction& instruction, int& programCounter);
+    bool executeCallInstruction(const VMInstruction& instruction, int& programCounter);
 };
+
+namespace vm
+{
+
+    std::vector<VMInstruction> generateVmInstructions(const std::vector<Quadruple>& quads,
+    const std::vector<FunctionInfo>& functions);
+
+} // namespace vm
 
 #endif

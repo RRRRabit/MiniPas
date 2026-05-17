@@ -6,11 +6,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
+option(BUILD_UI "Build Qt visualization app" ON)
 
 add_library(MiniPasCore STATIC
     src/CompilerFacade.cpp
+    src/BackendOptimization.cpp
+    src/BackendTargetCodeGen.cpp
     src/Lexer.cpp
     src/Parser.cpp
     src/SymbolTable.cpp
@@ -18,6 +19,7 @@ add_library(MiniPasCore STATIC
     src/Interpreter.cpp
     src/VirtualMachine.cpp
     include/CompilerFacade.h
+    include/CompilerBackendStages.h
     include/CompileResult.h
     include/Token.h
     include/Lexer.h
@@ -31,14 +33,19 @@ add_library(MiniPasCore STATIC
 
 target_include_directories(MiniPasCore PUBLIC include)
 
-add_executable(MiniPasPlus
-    src/main.cpp
-    src/MainWindow.cpp
-    include/MainWindow.h
-)
+if(BUILD_UI)
+    find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
-target_include_directories(MiniPasPlus PRIVATE include)
-target_link_libraries(MiniPasPlus PRIVATE MiniPasCore Qt${QT_VERSION_MAJOR}::Widgets)
+    add_executable(MiniPasPlus
+        src/main.cpp
+        src/MainWindow.cpp
+        include/MainWindow.h
+    )
+
+    target_include_directories(MiniPasPlus PRIVATE include)
+    target_link_libraries(MiniPasPlus PRIVATE MiniPasCore Qt${QT_VERSION_MAJOR}::Widgets)
+endif()
 
 add_executable(MiniPasCoreCLI
     src/main_cli.cpp

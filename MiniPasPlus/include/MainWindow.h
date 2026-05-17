@@ -10,6 +10,7 @@
 #include <QTableWidget>
 #include <QTabWidget>
 #include <QVBoxLayout>
+#include <QTreeWidget>
 
 // Qt Widgets 主窗口：只负责界面展示，不包含编译器核心逻辑。
 class MainWindow : public QMainWindow {
@@ -46,6 +47,9 @@ private:
     QTableWidget* quadrupleOptimizeTable_;
     QTableWidget* targetCodeTable_;
     QTableWidget* vmResultTable_;
+    QTreeWidget* parserTraceTreeWidget_;
+    QTableWidget* parserStepTable_;
+    QTableWidget* parserActionTable_;
     CompileResult lastResult_;
     int highlightedTokenRow_ = -1;
     QString highlightedLexeme_;
@@ -74,6 +78,8 @@ private:
     void fillQuadrupleOptimizeTable(const CompileResult& result);
     void fillTargetCodeTable(const CompileResult& result);
     void fillVmResultTable(const CompileResult& result);
+    void fillParserTraceView(const CompileResult& result);
+    void highlightParserRowsByRule(const QString& ruleName);
     void setStatusSuccess(const QString& message);
     void setStatusError(const QString& message);
     QString typeRef(const std::string& typeName) const;
@@ -83,7 +89,6 @@ private:
     QString lenlPointer(const std::string& typeName, const CompileResult& result) const;
     int positionFromLineColumn(int line, int column) const;
     void highlightTokenAt(int line, int column, const QString& lexeme);
-    void highlightWordOccurrences(const QString& word);
     void highlightLexemeOccurrences(const QString& lexeme);
     void connectTableHighlight(QTableWidget* table);
     void onGenericTableCellClicked(QTableWidget* table, int row, int column);

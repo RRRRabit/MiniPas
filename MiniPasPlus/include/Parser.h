@@ -15,6 +15,7 @@ public:
     CompileResult parse();
 
 private:
+    friend class RuleTraceGuard;
     struct ExprResult {
         std::string place;
         std::string type;
@@ -35,6 +36,13 @@ private:
     std::vector<FunctionInfo> functionInfos_;
     std::vector<ParameterInfo> parameterInfos_;
     std::vector<ActivationRecordItem> activationRecords_;
+    int parserTraceDepth_ = 0;
+    std::vector<std::string> parserRuleStack_;
+    std::vector<std::string> parserTraceTree_;
+    std::vector<std::string> parserStepLog_;
+    std::vector<std::string> parserActionLog_;
+    std::vector<std::string> parserStepRuleNames_;
+    std::vector<std::string> parserActionRuleNames_;
 
     // 每个 parse 函数对应一个非终结符。
     void parseProgram();
@@ -94,6 +102,11 @@ private:
                              const std::string& type, int offset, int size);
     void buildActivationRecords();
     void buildBasicBlocks();
+    void traceEnterRule(const std::string& ruleName);
+    void traceExitRule(const std::string& ruleName);
+    void traceStep(const std::string& message);
+    void traceAction(const std::string& message);
+    std::string currentRuleContext() const;
 };
 
 #endif
