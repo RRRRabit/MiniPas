@@ -14,6 +14,7 @@ add_library(MiniPasCore STATIC
     src/BackendTargetCodeGen.cpp
     src/Lexer.cpp
     src/Parser.cpp
+    src/ParserSupport.cpp
     src/SymbolTable.cpp
     src/TypeTable.cpp
     src/Interpreter.cpp
