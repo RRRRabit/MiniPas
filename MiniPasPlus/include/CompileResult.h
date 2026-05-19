@@ -2,6 +2,7 @@
 #define MINIPASPLUS_COMPILERESULT_H
 
 #include "Quadruple.h"
+#include "SimplePrecedence.h"
 #include "SymbolTable.h"
 #include "Token.h"
 #include "TypeTable.h"
@@ -70,6 +71,13 @@ struct VMInstruction {
 struct CompileResult {
     bool success = false;
     std::string errorMessage;
+    std::string errorStage;
+    int errorLine = 0;
+    int errorColumn = 0;
+    std::string errorToken;
+    std::string expectedToken;
+    std::string errorSuggestion;
+    std::vector<std::string> additionalErrors;
     std::vector<Token> tokens;
     std::vector<KeywordEntry> keywordTable;
     std::vector<DelimiterEntry> delimiterTable;
@@ -97,6 +105,8 @@ struct CompileResult {
     std::vector<std::string> parserActionLog;
     std::vector<std::string> parserStepRuleNames;
     std::vector<std::string> parserActionRuleNames;
+    SimplePrecedenceResult simplePrecedence;
+    std::vector<SimplePrecedenceResult> simplePrecedenceAll;
 };
 
 #endif

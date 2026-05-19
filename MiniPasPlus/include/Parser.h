@@ -96,6 +96,8 @@ private:
     std::string resolveLValueType(const std::string& leftValue) const;
     std::string mergeNumericType(const std::string& leftType, const std::string& rightType, const Token& opToken) const;
     bool canAssign(const std::string& targetType, const std::string& sourceType) const;
+    std::vector<Token> collectExpressionTokensFromCurrent() const;
+    std::vector<Token> collectConditionTokensFromCurrent() const;
     std::string newTemp(const std::string& typeName);
     void emit(const std::string& op, const std::string& arg1, const std::string& arg2, const std::string& result);
     void addActivationRecord(const std::string& scope, const std::string& name, const std::string& category,

@@ -219,6 +219,148 @@ bool Parser::canAssign(const std::string& targetType, const std::string& sourceT
     return false;
 }
 
+std::vector<Token> Parser::collectExpressionTokensFromCurrent() const
+{
+    std::vector<Token> collected;
+    int parenthesisDepth = 0;
+    int bracketDepth = 0;
+
+    for (std::size_t i = current_; i < tokens_.size(); ++i)
+    {
+        const Token& token = tokens_[i];
+        if (token.type == TokenType::END_OF_FILE)
+        {
+            break;
+        }
+
+        if (token.type == TokenType::DELIMITER && token.lexeme == "(")
+        {
+            ++parenthesisDepth;
+        }
+        else if (token.type == TokenType::DELIMITER && token.lexeme == ")")
+        {
+            if (parenthesisDepth == 0 && bracketDepth == 0)
+            {
+                break;
+            }
+            --parenthesisDepth;
+        }
+        else if (token.type == TokenType::DELIMITER && token.lexeme == "[")
+        {
+            ++bracketDepth;
+        }
+        else if (token.type == TokenType::DELIMITER && token.lexeme == "]")
+        {
+            if (bracketDepth == 0 && parenthesisDepth == 0)
+            {
+                break;
+            }
+            --bracketDepth;
+        }
+
+        if (parenthesisDepth == 0 && bracketDepth == 0)
+        {
+            if (token.type == TokenType::DELIMITER && (token.lexeme == ";" || token.lexeme == "," || token.lexeme == ":"))
+            {
+                break;
+            }
+            if (token.type == TokenType::KEYWORD &&
+                (token.lexeme == "then" || token.lexeme == "do" || token.lexeme == "else" || token.lexeme == "end"))
+            {
+                break;
+            }
+            if (token.type == TokenType::OPERATOR &&
+                (token.lexeme == "<" || token.lexeme == ">" || token.lexeme == "=" || token.lexeme == "!=" || token.lexeme == "<=" || token.lexeme == ">="))
+            {
+                break;
+            }
+        }
+
+        if (token.type == TokenType::IDENTIFIER
+            || token.type == TokenType::CONSTANT
+            || (token.type == TokenType::OPERATOR && (token.lexeme == "+" || token.lexeme == "-" || token.lexeme == "*" || token.lexeme == "/"))
+            || (token.type == TokenType::DELIMITER && (token.lexeme == "(" || token.lexeme == ")")))
+        {
+            // 变量因子归一化：a[i] / r.a / r.a[i] 在简单优先预检查中统一视作一个 i。
+            if (token.type == TokenType::IDENTIFIER)
+            {
+                collected.push_back(token);
+
+                std::size_t j = i + 1;
+                bool consumedSuffix = false;
+                while (j < tokens_.size())
+                {
+                    const Token& next = tokens_[j];
+                    if (next.type == TokenType::DELIMITER && next.lexeme == ".")
+                    {
+                        if (j + 1 < tokens_.size() && tokens_[j + 1].type == TokenType::IDENTIFIER)
+                        {
+                            j += 2;
+                            consumedSuffix = true;
+                            continue;
+                        }
+                        break;
+                    }
+                    if (next.type == TokenType::DELIMITER && next.lexeme == "[")
+                    {
+                        int localDepth = 1;
+                        ++j;
+                        while (j < tokens_.size() && localDepth > 0)
+                        {
+                            if (tokens_[j].type == TokenType::DELIMITER && tokens_[j].lexeme == "[") ++localDepth;
+                            else if (tokens_[j].type == TokenType::DELIMITER && tokens_[j].lexeme == "]") --localDepth;
+                            ++j;
+                        }
+                        consumedSuffix = true;
+                        continue;
+                    }
+                    break;
+                }
+                if (consumedSuffix)
+                {
+                    i = j - 1;
+                }
+                continue;
+            }
+
+            collected.push_back(token);
+        }
+    }
+    return collected;
+}
+
+std::vector<Token> Parser::collectConditionTokensFromCurrent() const
+{
+    std::vector<Token> collected;
+    int parenthesisDepth = 0;
+    int bracketDepth = 0;
+    for (std::size_t i = current_; i < tokens_.size(); ++i)
+    {
+        const Token& token = tokens_[i];
+        if (token.type == TokenType::END_OF_FILE)
+        {
+            break;
+        }
+        if (token.type == TokenType::DELIMITER && token.lexeme == "(") ++parenthesisDepth;
+        if (token.type == TokenType::DELIMITER && token.lexeme == ")")
+        {
+            if (parenthesisDepth == 0 && bracketDepth == 0) break;
+            --parenthesisDepth;
+        }
+        if (token.type == TokenType::DELIMITER && token.lexeme == "[") ++bracketDepth;
+        if (token.type == TokenType::DELIMITER && token.lexeme == "]") --bracketDepth;
+
+        if (parenthesisDepth == 0 && bracketDepth == 0 &&
+            token.type == TokenType::KEYWORD &&
+            (token.lexeme == "then" || token.lexeme == "do"))
+        {
+            break;
+        }
+        collected.push_back(token);
+    }
+    return collected;
+}
+
 std::string Parser::newTemp(const std::string& typeName)
 {
     std::string name = "t" + std::to_string(++tempIndex_);

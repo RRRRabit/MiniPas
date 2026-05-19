@@ -1,4 +1,5 @@
 #include "Parser.h"
+#include "SimplePrecedence.h"
 #include <algorithm>
 #include <set>
 #include <sstream>
@@ -390,6 +391,12 @@ std::string Parser::parseTypeName()
         std::string typeName = peek().lexeme;
         if (typeTable_.findRecordType(typeName) == nullptr && typeTable_.findArrayType(typeName) == nullptr)
         {
+            if (current_ + 1 < tokens_.size()
+                && tokens_[current_ + 1].type == TokenType::OPERATOR
+                && tokens_[current_ + 1].lexeme == ":=")
+            {
+                errorAtCurrent("声明区语法错误：此处应为类型名，但读到了赋值语句。请检查是否将 BEGIN 误写为标识符（如 BEG）。");
+            }
             errorAtCurrent("使用了未声明的类型: " + typeName);
         }
         ++current_;
@@ -406,6 +413,16 @@ void Parser::parseCompoundStmt()
     RuleTraceGuard trace(this, "<COMPOUND_STATEMENT>");
     consume(TokenType::KEYWORD, "begin", "复合语句缺少 begin");
     parseStmtList();
+
+    if (!check(TokenType::KEYWORD, "end"))
+    {
+        if (check(TokenType::KEYWORD, "else"))
+        {
+            errorAtCurrent("条件分支结构错误：ELSE 未与 IF 正确匹配。请检查 THEN 分支末尾是否存在多余分号 ';'。");
+        }
+        errorAtCurrent("复合语句缺少 end");
+    }
+
     consume(TokenType::KEYWORD, "end", "复合语句缺少 end");
 }
 
@@ -515,6 +532,17 @@ void Parser::parseIfStmt()
 Parser::ExprResult Parser::parseCondition()
 {
     RuleTraceGuard trace(this, "<CONDITION>");
+    std::vector<Token> conditionTokens = collectConditionTokensFromCurrent();
+    if (!conditionTokens.empty())
+    {
+        traceAction("进入简单优先分析（关系层）");
+        SimplePrecedenceResult condSp = simple_precedence::analyzeRelationConditionTokens(conditionTokens);
+        if (!condSp.success)
+        {
+            traceAction("简单优先分析提示（关系层）: " + condSp.errorMessage);
+        }
+    }
+
     ExprResult left = parseExpression();
     if (!(check(TokenType::OPERATOR, "<") || check(TokenType::OPERATOR, ">")
     || check(TokenType::OPERATOR, "=") || check(TokenType::OPERATOR, "!=")))
@@ -565,6 +593,17 @@ std::string Parser::parseLeftValue()
 Parser::ExprResult Parser::parseExpression()
 {
     RuleTraceGuard trace(this, "<EXPRESSION>");
+    std::vector<Token> expressionTokens = collectExpressionTokensFromCurrent();
+    if (!expressionTokens.empty())
+    {
+        traceAction("进入简单优先分析（表达式层）");
+        SimplePrecedenceResult spResult = simple_precedence::analyzeExpressionTokens(expressionTokens);
+        if (!spResult.success)
+        {
+            traceAction("简单优先分析提示（表达式层）: " + spResult.errorMessage);
+        }
+    }
+
     ExprResult left = parseTerm();
     while (check(TokenType::OPERATOR, "+") || check(TokenType::OPERATOR, "-"))
     {

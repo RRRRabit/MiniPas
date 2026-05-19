@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QColor>
+#include <QBrush>
 #include <QMessageBox>
 #include <QRegularExpression>
 #include <QSplitter>
@@ -57,6 +58,9 @@ MainWindow::MainWindow(QWidget* parent)
       quadrupleOptimizeTable_(nullptr),
       targetCodeTable_(nullptr),
       vmResultTable_(nullptr),
+      simplePrecedenceTable_(nullptr),
+      simplePrecedenceStepTable_(nullptr),
+      simplePrecedenceSummaryLabel_(nullptr),
       parserTraceTreeWidget_(nullptr),
       parserStepTable_(nullptr),
       parserActionTable_(nullptr),
@@ -87,7 +91,7 @@ void MainWindow::buildUi() {
     exampleCombo_ = new QComboBox(sourceGroup);
     exampleRow->addWidget(exampleCombo_, 1);
     sourceLayout->addLayout(exampleRow);
-    sourceEdit_ = new QPlainTextEdit(sourceGroup);
+    sourceEdit_ = new CodeEditorWithLineNumber(sourceGroup);
     sourceEdit_->setFont(QFont("Consolas", 11));
     sourceLayout->addWidget(sourceEdit_);
 
@@ -290,7 +294,7 @@ void MainWindow::buildUi() {
     targetCodeTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     targetCodeTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     targetCodeTable_->setColumnWidth(1, 240);
-    tabWidget_->addTab(createTablePage("目标代码生成过程跟踪（第9章格式）", targetCodeTable_), "目标代码");
+    tabWidget_->addTab(createTablePage("目标代码生成过程", targetCodeTable_), "目标代码");
 
     vmResultTable_ = new QTableWidget(tabWidget_);
     setupTable(vmResultTable_, {"变量名", "值"});
@@ -298,8 +302,46 @@ void MainWindow::buildUi() {
     vmResultTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     tabWidget_->addTab(createTablePage("虚拟机执行后的最终变量值", vmResultTable_), "VM运行结果");
 
+    QWidget* simplePrecedencePage = nullptr;
+    QWidget* recursiveTracePage = nullptr;
+
+    {
+        auto* spPage = new QWidget(tabWidget_);
+        simplePrecedencePage = spPage;
+        auto* spLayout = new QVBoxLayout(spPage);
+        auto* spTitle = new QLabel("简单优先分析过程", spPage);
+        spTitle->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
+        spLayout->addWidget(spTitle);
+
+        simplePrecedenceTable_ = new QTableWidget(spPage);
+        setupTable(simplePrecedenceTable_, {"", "i", "+", "*", "(", ")", "#"});
+        spLayout->addWidget(new QLabel("简单优先分析表", spPage));
+        spLayout->addWidget(simplePrecedenceTable_);
+
+        auto* processTitle = new QLabel("简单分析过程", spPage);
+        processTitle->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
+        spLayout->addWidget(processTitle);
+
+        simplePrecedenceSummaryLabel_ = new QLabel("表达式：等待编译", spPage);
+        simplePrecedenceSummaryLabel_->setStyleSheet("color: #334155;");
+        spLayout->addWidget(simplePrecedenceSummaryLabel_);
+
+        simplePrecedenceStepTable_ = new QTableWidget(spPage);
+        setupTable(simplePrecedenceStepTable_, {"步骤", "栈", "输入", "关系", "动作"});
+        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+        spLayout->addWidget(new QLabel("分析步骤", spPage));
+        spLayout->addWidget(simplePrecedenceStepTable_);
+
+        tabWidget_->insertTab(3, spPage, "简单优先分析");
+    }
+
     {
         auto* tracePage = new QWidget(tabWidget_);
+        recursiveTracePage = tracePage;
         auto* traceLayout = new QVBoxLayout(tracePage);
         traceLayout->setContentsMargins(9, 9, 9, 9);
         traceLayout->setSpacing(6);
@@ -352,6 +394,16 @@ void MainWindow::buildUi() {
         });
     }
 
+    if (simplePrecedencePage != nullptr && recursiveTracePage != nullptr) {
+        int simpleIndex = tabWidget_->indexOf(simplePrecedencePage);
+        int traceIndex = tabWidget_->indexOf(recursiveTracePage);
+        if (simpleIndex >= 0 && traceIndex >= 0) {
+            tabWidget_->removeTab(simpleIndex);
+            traceIndex = tabWidget_->indexOf(recursiveTracePage);
+            tabWidget_->insertTab(traceIndex + 1, simplePrecedencePage, "简单优先分析");
+        }
+    }
+
     splitter->addWidget(leftPanel);
     splitter->addWidget(tabWidget_);
     splitter->setStretchFactor(0, 1);
@@ -363,10 +415,11 @@ void MainWindow::buildUi() {
     auto* statusLayout = new QVBoxLayout(statusPanel);
     statusLayout->setContentsMargins(8, 2, 8, 2);
     statusLayout->setSpacing(0);
-    statusLabel_ = new QLabel("就绪", statusPanel);
-    statusLabel_->setStyleSheet("color: #333333; font-weight: 600;");
-    statusLabel_->setMinimumHeight(20);
-    statusLabel_->setMaximumHeight(24);
+    statusLabel_ = new QPlainTextEdit(statusPanel);
+    statusLabel_->setReadOnly(true);
+    statusLabel_->setPlainText("就绪");
+    statusLabel_->setStyleSheet("color: #333333; font-weight: 600; background: #ffffff;");
+    statusLabel_->setMinimumHeight(70);
     statusLayout->addWidget(statusLabel_);
 
     auto* verticalSplitter = new QSplitter(Qt::Vertical, central);
@@ -374,8 +427,8 @@ void MainWindow::buildUi() {
     verticalSplitter->addWidget(statusPanel);
     verticalSplitter->setStretchFactor(0, 20);
     verticalSplitter->setStretchFactor(1, 1);
-    verticalSplitter->setSizes({720, 36});
-    verticalSplitter->setCollapsible(1, true);
+    verticalSplitter->setSizes({660, 120});
+    verticalSplitter->setCollapsible(1, false);
 
     rootLayout->addWidget(verticalSplitter);
     setCentralWidget(central);
@@ -395,7 +448,7 @@ void MainWindow::buildUi() {
         }
         QTextStream in(&file);
         sourceEdit_->setPlainText(in.readAll());
-        statusLabel_->setText("已加载文件: " + path);
+        statusLabel_->setPlainText("已加载文件: " + path);
         statusLabel_->setStyleSheet("color: #333333; font-weight: 600;");
     });
     connect(tokenTable_, &QTableWidget::cellClicked, this, [this](int row, int) {
@@ -457,7 +510,7 @@ void MainWindow::buildUi() {
 QWidget* MainWindow::createSymbolSystemPage() {
     auto* page = new QWidget(tabWidget_);
     auto* layout = new QVBoxLayout(page);
-    auto* label = new QLabel("语义分析阶段维护的符号表系统：SYNBL / TYPEL / RINFL / AINFL / PFINFL / CONSL / LENL / VALL", page);
+    auto* label = new QLabel("符号表系统", page);
     label->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
 
     symbolTabWidget_ = new QTabWidget(page);
@@ -547,10 +600,55 @@ void MainWindow::compileAndRun() {
         fillTokenTable(result);
         fillKeywordAndDelimiterTables(result);
         fillIdentifierAndConstantTables(result);
-        QString message = QString::fromStdString(result.errorMessage);
-        setStatusError(message);
+        const QString stage = result.errorStage.empty()
+            ? QString("未知阶段")
+            : QString::fromStdString(result.errorStage);
+
+        QString position = "未知位置";
+        if (result.errorLine > 0 && result.errorColumn > 0) {
+            position = QString("line %1, column %2").arg(result.errorLine).arg(result.errorColumn);
+        }
+
+        QString reason = QString::fromStdString(result.errorMessage);
+        const QStringList lines = reason.split('\n', Qt::SkipEmptyParts);
+        for (const QString& one : lines) {
+            if (one.startsWith("原因:")) {
+                reason = one.mid(QString("原因:").size()).trimmed();
+                break;
+            }
+        }
+        if (reason.isEmpty()) {
+            reason = "未知错误";
+        }
+
+        if (reason.contains("优先关系未定义")) {
+            reason = "表达式语法不完整：相邻记号之间缺少合法运算关系。";
+        } else if (reason.contains("复合语句缺少 end")) {
+            reason = "复合语句结构不完整：缺少结束符 end。";
+        } else if (reason.contains("else 无法匹配到 if")) {
+            reason = "条件分支结构错误：ELSE 未与 IF 正确匹配。";
+        } else if (reason.contains("条件表达式缺少关系运算符")) {
+            reason = "条件表达式不完整：缺少关系运算符（<、>、=、!=）。";
+        } else if (reason.contains("赋值类型不兼容")) {
+            reason = "类型检查失败：赋值左值类型与右侧表达式类型不兼容。";
+        }
+
+        QStringList issues;
+        issues << QString("line %1, column %2: %3")
+                      .arg(result.errorLine > 0 ? QString::number(result.errorLine) : "?")
+                      .arg(result.errorColumn > 0 ? QString::number(result.errorColumn) : "?")
+                      .arg(reason);
+        for (const std::string& err : result.additionalErrors) {
+            issues << QString::fromStdString(err);
+        }
+
+        QString message = QString("阶段: %1\n问题列表:").arg(stage);
+        for (int i = 0; i < issues.size(); ++i) {
+            message += QString("\n%1. %2").arg(i + 1).arg(issues[i]);
+        }
+        setStatusError(QString("[%1] %2").arg(stage, message));
         tabWidget_->setCurrentIndex(0);
-        QMessageBox::critical(this, "编译错误", message);
+        QMessageBox::critical(this, QString("编译错误 - %1").arg(stage), message);
         return;
     }
 
@@ -585,6 +683,15 @@ void MainWindow::clearOutput() {
     quadrupleOptimizeTable_->setRowCount(0);
     targetCodeTable_->setRowCount(0);
     vmResultTable_->setRowCount(0);
+    if (simplePrecedenceTable_ != nullptr) {
+        simplePrecedenceTable_->setRowCount(0);
+    }
+    if (simplePrecedenceStepTable_ != nullptr) {
+        simplePrecedenceStepTable_->setRowCount(0);
+    }
+    if (simplePrecedenceSummaryLabel_ != nullptr) {
+        simplePrecedenceSummaryLabel_->setText("等待编译");
+    }
     if (parserTraceTreeWidget_ != nullptr) {
         parserTraceTreeWidget_->clear();
     }
@@ -596,7 +703,7 @@ void MainWindow::clearOutput() {
     }
     clearSourceHighlight();
     highlightedTokenRow_ = -1;
-    statusLabel_->setText("输出已清空");
+    statusLabel_->setPlainText("输出已清空");
     statusLabel_->setStyleSheet("color: #333333; font-weight: 600;");
 }
 
@@ -610,6 +717,7 @@ void MainWindow::fillAllTables(const CompileResult& result) {
     fillQuadrupleOptimizeTable(result);
     fillTargetCodeTable(result);
     fillVmResultTable(result);
+    fillSimplePrecedenceView(result);
     fillParserTraceView(result);
 }
 
@@ -1077,7 +1185,7 @@ void MainWindow::fillTargetCodeTable(const CompileResult& result) {
 }
 
 void MainWindow::fillVmResultTable(const CompileResult& result) {
-    const int summaryRows = 5;
+    const int summaryRows = 6;
     vmResultTable_->setRowCount(summaryRows + static_cast<int>(result.runtimeValues.size()));
 
     vmResultTable_->setItem(0, 0, new QTableWidgetItem("执行状态"));
@@ -1093,14 +1201,107 @@ void MainWindow::fillVmResultTable(const CompileResult& result) {
     vmResultTable_->setItem(3, 1, new QTableWidgetItem(
         result.vmErrorMessage.empty() ? "无报错" : QString::fromStdString(result.vmErrorMessage)));
 
-    vmResultTable_->setItem(4, 0, new QTableWidgetItem("---- 变量结果 ----"));
-    vmResultTable_->setItem(4, 1, new QTableWidgetItem(""));
+    vmResultTable_->setItem(4, 0, new QTableWidgetItem("VM结果有效性"));
+    auto* validItem = new QTableWidgetItem(result.vmFallbackUsed
+        ? "无效（已回退解释器）"
+        : "有效");
+    if (result.vmFallbackUsed) {
+        validItem->setForeground(QBrush(QColor(200, 30, 30)));
+    } else {
+        validItem->setForeground(QBrush(QColor(20, 120, 40)));
+    }
+    vmResultTable_->setItem(4, 1, validItem);
+
+    vmResultTable_->setItem(5, 0, new QTableWidgetItem("---- 变量结果 ----"));
+    vmResultTable_->setItem(5, 1, new QTableWidgetItem(""));
 
     int row = summaryRows;
     for (const auto& item : result.runtimeValues) {
         vmResultTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(item.first)));
         vmResultTable_->setItem(row, 1, new QTableWidgetItem(QString::number(item.second, 'g', 12)));
         ++row;
+    }
+}
+
+void MainWindow::fillSimplePrecedenceView(const CompileResult& result) {
+    std::vector<SimplePrecedenceResult> all;
+    if (result.simplePrecedenceAll.empty()) {
+        all.push_back(result.simplePrecedence);
+    } else {
+        all = result.simplePrecedenceAll;
+    }
+    const SimplePrecedenceResult& sp = all.front();
+
+    if (simplePrecedenceSummaryLabel_ != nullptr) {
+        if (!sp.enabled || all.empty()) {
+            simplePrecedenceSummaryLabel_->setText("表达式：未启用");
+        } else {
+            QStringList lines;
+            for (int i = 0; i < static_cast<int>(all.size()); ++i) {
+                const auto& one = all[i];
+                if (one.success) {
+                    lines << QString("表达式%1：%2    结果：成功")
+                                .arg(i + 1)
+                                .arg(QString::fromStdString(one.expressionText));
+                } else {
+                    lines << QString("表达式%1：%2    结果：失败    原因：%3")
+                                .arg(i + 1)
+                                .arg(QString::fromStdString(one.expressionText))
+                                .arg(QString::fromStdString(one.errorMessage));
+                }
+            }
+            simplePrecedenceSummaryLabel_->setText(lines.join("\n"));
+        }
+    }
+
+    if (simplePrecedenceTable_ != nullptr) {
+        int n = static_cast<int>(sp.symbols.size());
+        simplePrecedenceTable_->setColumnCount(n + 1);
+        QStringList headers;
+        headers << "";
+        for (const auto& t : sp.symbols) {
+            headers << QString::fromStdString(t);
+        }
+        simplePrecedenceTable_->setHorizontalHeaderLabels(headers);
+        simplePrecedenceTable_->setRowCount(n);
+
+        for (int i = 0; i < n; ++i) {
+            simplePrecedenceTable_->setItem(i, 0, new QTableWidgetItem(QString::fromStdString(sp.symbols[i])));
+            for (int j = 0; j < n; ++j) {
+                QString rel;
+                if (i < static_cast<int>(sp.table.size()) && j < static_cast<int>(sp.table[i].size())) {
+                    rel = QString::fromStdString(sp.table[i][j]);
+                }
+                simplePrecedenceTable_->setItem(i, j + 1, new QTableWidgetItem(rel));
+            }
+        }
+    }
+
+    if (simplePrecedenceStepTable_ != nullptr) {
+        int rows = 0;
+        for (const auto& one : all) {
+            rows += 1 + static_cast<int>(one.steps.size());
+        }
+        simplePrecedenceStepTable_->setRowCount(rows);
+        int row = 0;
+        for (int exprIndex = 0; exprIndex < static_cast<int>(all.size()); ++exprIndex) {
+            const auto& one = all[exprIndex];
+            simplePrecedenceStepTable_->setItem(row, 0, new QTableWidgetItem(QString("表达式%1").arg(exprIndex + 1)));
+            simplePrecedenceStepTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(one.expressionText)));
+            simplePrecedenceStepTable_->setItem(row, 2, new QTableWidgetItem(""));
+            simplePrecedenceStepTable_->setItem(row, 3, new QTableWidgetItem(""));
+            simplePrecedenceStepTable_->setItem(row, 4, new QTableWidgetItem(""));
+            ++row;
+            for (int i = 0; i < static_cast<int>(one.steps.size()); ++i) {
+                const auto& step = one.steps[i];
+                simplePrecedenceStepTable_->setItem(row, 0, new QTableWidgetItem(QString::number(i + 1)));
+                simplePrecedenceStepTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(step.stackText)));
+                simplePrecedenceStepTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(step.inputText)));
+                simplePrecedenceStepTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(step.relationText)));
+                simplePrecedenceStepTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(step.actionText)));
+                ++row;
+            }
+        }
     }
 }
 
@@ -1213,12 +1414,12 @@ void MainWindow::fillRawQuadrupleTable(const CompileResult& result) {
 }
 
 void MainWindow::setStatusSuccess(const QString& message) {
-    statusLabel_->setText(message);
+    statusLabel_->setPlainText(message);
     statusLabel_->setStyleSheet("color: #16833a; font-weight: 700;");
 }
 
 void MainWindow::setStatusError(const QString& message) {
-    statusLabel_->setText(message);
+    statusLabel_->setPlainText(message);
     statusLabel_->setStyleSheet("color: #c62828; font-weight: 700;");
 }
 

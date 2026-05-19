@@ -2,6 +2,7 @@
 #define MINIPASPLUS_MAINWINDOW_H
 
 #include "CompileResult.h"
+#include "CodeEditorWithLineNumber.h"
 #include <QLabel>
 #include <QMainWindow>
 #include <QPlainTextEdit>
@@ -18,13 +19,13 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
 
 private:
-    QPlainTextEdit* sourceEdit_;
+    CodeEditorWithLineNumber* sourceEdit_;
     QComboBox* exampleCombo_;
     QPushButton* openFileButton_;
     QPushButton* compileButton_;
     QPushButton* clearButton_;
     QTabWidget* tabWidget_;
-    QLabel* statusLabel_;
+    QPlainTextEdit* statusLabel_;
 
     QTableWidget* tokenTable_;
     QTableWidget* keywordTable_;
@@ -47,6 +48,9 @@ private:
     QTableWidget* quadrupleOptimizeTable_;
     QTableWidget* targetCodeTable_;
     QTableWidget* vmResultTable_;
+    QTableWidget* simplePrecedenceTable_;
+    QTableWidget* simplePrecedenceStepTable_;
+    QLabel* simplePrecedenceSummaryLabel_;
     QTreeWidget* parserTraceTreeWidget_;
     QTableWidget* parserStepTable_;
     QTableWidget* parserActionTable_;
@@ -78,6 +82,7 @@ private:
     void fillQuadrupleOptimizeTable(const CompileResult& result);
     void fillTargetCodeTable(const CompileResult& result);
     void fillVmResultTable(const CompileResult& result);
+    void fillSimplePrecedenceView(const CompileResult& result);
     void fillParserTraceView(const CompileResult& result);
     void highlightParserRowsByRule(const QString& ruleName);
     void setStatusSuccess(const QString& message);

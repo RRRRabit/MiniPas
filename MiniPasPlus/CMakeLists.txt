@@ -13,6 +13,7 @@ add_library(MiniPasCore STATIC
     src/BackendOptimization.cpp
     src/BackendTargetCodeGen.cpp
     src/Lexer.cpp
+    src/SimplePrecedence.cpp
     src/Parser.cpp
     src/ParserSupport.cpp
     src/SymbolTable.cpp
@@ -24,6 +25,7 @@ add_library(MiniPasCore STATIC
     include/CompileResult.h
     include/Token.h
     include/Lexer.h
+    include/SimplePrecedence.h
     include/Parser.h
     include/SymbolTable.h
     include/TypeTable.h
@@ -41,7 +43,9 @@ if(BUILD_UI)
     add_executable(MiniPasPlus
         src/main.cpp
         src/MainWindow.cpp
+        src/CodeEditorWithLineNumber.cpp
         include/MainWindow.h
+        include/CodeEditorWithLineNumber.h
     )
 
     target_include_directories(MiniPasPlus PRIVATE include)
