@@ -5,6 +5,48 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
+
+Parser::TraceScope::TraceScope(Parser& parser, std::string rule)
+    : parser(parser), rule(std::move(rule))
+{
+    // 进入一个 parseXXX 函数时记录调用树节点。
+    // 这只服务 GUI 的“递归分析过程”页面，不影响语法分析本身。
+    parser.traceEnter(this->rule);
+}
+
+Parser::TraceScope::~TraceScope()
+{
+    // 离开 parseXXX 函数时恢复调用深度。
+    parser.traceExit();
+}
+
+void Parser::traceEnter(const std::string& rule)
+{
+    result_.parserTrace.push_back({traceDepth_, rule, "入口 子程序 " + rule});
+    ++traceDepth_;
+}
+
+void Parser::traceExit()
+{
+    if (traceDepth_ > 0)
+    {
+        --traceDepth_;
+    }
+}
+
+void Parser::logParserStep(const std::string& rule, const std::string& text)
+{
+    result_.parserSteps.push_back({rule, text});
+}
+
+void Parser::logParserAction(const std::string& rule, const std::string& text)
+{
+    result_.parserActions.push_back({rule, text});
+}
+
+// 查看当前 Token，但不移动 current_。
+// Parser 大部分判断都从 peek() 开始。
 const Token& Parser::peek() const {
     return tokens_[current_];
 }
@@ -18,6 +60,11 @@ bool Parser::isAtEnd() const {
 }
 
 bool Parser::check(TokenType type, const std::string& lexeme) const {
+    // check 只判断，不消耗 Token。
+    // type 必须一致；如果传了 lexeme，文本也必须一致。
+    //
+    // 例如 check(KEYWORD, "if") 表示：
+    // 当前 Token 是否是关键字 if？
     if (isAtEnd() && type != TokenType::END_OF_FILE)
     {
         return false;
@@ -31,33 +78,34 @@ bool Parser::check(TokenType type, const std::string& lexeme) const {
 
 bool Parser::match(TokenType type, const std::string& lexeme)
 {
+    // match 用于“可有可无”的语法。
+    // 匹配成功：current_ 前进一格，返回 true。
+    // 匹配失败：什么都不做，返回 false。
+    //
+    // 例子：if 语句里的 else 是可选的，所以用 match("else")。
     if (!check(type, lexeme))
     {
         return false;
     }
-    std::string expected = tokenTypeToString(type) + (lexeme.empty() ? "" : (":" + lexeme));
-    traceStep("判定(y): 期望 " + expected + "，读入 " + peek().lexeme
-              + "，执行 NEXT(w)"
-              + " @(" + std::to_string(peek().line) + "," + std::to_string(peek().column) + ")");
+    const Token& token = tokens_[current_];
+    logParserStep("TOKEN", "可选匹配成功: " + token.lexeme + " @(" + std::to_string(token.line) + "," + std::to_string(token.column) + ")");
     ++current_;
     return true;
 }
 
 Token Parser::consume(TokenType type, const std::string& lexeme, const std::string& reason)
 {
+    // consume 用于“必须出现”的语法。
+    // 匹配成功：读走 Token。
+    // 匹配失败：立刻报错。
+    //
+    // 例子：程序必须以 program 开头，所以用 consume(KEYWORD, "program", ...)
     if (check(type, lexeme))
     {
         Token token = tokens_[current_++];
-        std::string expected = tokenTypeToString(type) + (lexeme.empty() ? "" : (":" + lexeme));
-        traceStep("判定(y): 期望 " + expected + "，读入 " + token.lexeme
-                  + "，执行 NEXT(w)"
-                  + " @(" + std::to_string(token.line) + "," + std::to_string(token.column) + ")");
+        logParserStep("TOKEN", "匹配 Token: " + token.lexeme + " @(" + std::to_string(token.line) + "," + std::to_string(token.column) + ")");
         return token;
     }
-    std::string got = isAtEnd() ? "EOF" : peek().lexeme;
-    traceStep("判定(n): 期望 " + tokenTypeToString(type) + (lexeme.empty() ? "" : (":" + lexeme))
-              + "，实际 " + got + "，转 err"
-              + (isAtEnd() ? "" : (" @(" + std::to_string(peek().line) + "," + std::to_string(peek().column) + ")")));
     errorAtCurrent(reason);
     return peek();
 }
@@ -72,6 +120,8 @@ void Parser::errorAtCurrent(const std::string& reason) const {
 }
 
 void Parser::errorAtToken(const Token& token, const std::string& reason) const {
+    // 把错误位置和原因拼成异常消息。
+    // CompilerFacade 会捕获这个异常，并写入 CompileResult。
     std::ostringstream oss;
     oss << "line " << token.line << ", column " << token.column << ": " << reason
     << "，当前 Token 为 '" << token.lexeme << "'";
@@ -79,6 +129,8 @@ void Parser::errorAtToken(const Token& token, const std::string& reason) const {
 }
 
 bool Parser::isBasicTypeToken() const {
+    // MiniPas 支持的基本类型。
+    // 自定义 record/array 类型不在这里判断，而是在 parseTypeName 里查 TypeTable。
     return check(TokenType::KEYWORD, "integer")
     || check(TokenType::KEYWORD, "real")
     || check(TokenType::KEYWORD, "char")
@@ -86,6 +138,8 @@ bool Parser::isBasicTypeToken() const {
 }
 
 bool Parser::isStatementStart() const {
+    // 判断当前 Token 能否作为一条语句的开始。
+    // parseStmtList 用它来决定语句列表是否结束。
     return check(TokenType::IDENTIFIER)
     || check(TokenType::KEYWORD, "begin")
     || check(TokenType::KEYWORD, "if")
@@ -93,6 +147,8 @@ bool Parser::isStatementStart() const {
 }
 
 void Parser::checkVariableDeclared(const Token& nameToken) const {
+    // 语义检查：变量必须先声明后使用。
+    // 如果符号表里找不到，说明用户写了未声明变量。
     const SymbolEntry* symbol = symbolTable_.find(nameToken.lexeme);
     if (symbol == nullptr || symbol->kind == "program")
     {
@@ -101,6 +157,13 @@ void Parser::checkVariableDeclared(const Token& nameToken) const {
 }
 
 void Parser::checkLeftValue(const Token& baseToken, const Token* fieldToken) const {
+    // 检查左值是否合法。
+    //
+    // 情况 1：a
+    // 只需要检查 a 是否声明。
+    //
+    // 情况 2：p.age
+    // 先检查 p 是否声明，再检查 p 是不是 record 类型，最后检查 age 字段是否存在。
     checkVariableDeclared(baseToken);
 
     const SymbolEntry* symbol = symbolTable_.find(baseToken.lexeme);
@@ -122,6 +185,13 @@ void Parser::checkLeftValue(const Token& baseToken, const Token* fieldToken) con
 }
 
 std::string Parser::resolveArrayElementType(const Token& baseToken, const ExprResult& indexExpr) const {
+    // 解析数组元素类型，同时做语义检查。
+    //
+    // 对 arr[i] 来说：
+    // 1. arr 必须声明过。
+    // 2. i 的类型必须是 integer。
+    // 3. arr 的类型必须真的是 array。
+    // 4. 返回 array 的元素类型，例如 integer / real。
     checkVariableDeclared(baseToken);
     if (indexExpr.type != "integer")
     {
@@ -142,6 +212,12 @@ std::string Parser::resolveArrayElementType(const Token& baseToken, const ExprRe
 }
 
 std::string Parser::resolveLValueType(const std::string& leftValue) const {
+    // 根据左值文本推断它的类型。
+    //
+    // 支持三种形式：
+    // 1. a       -> 查符号表里 a 的类型
+    // 2. arr[i]  -> 查 arr 的数组元素类型
+    // 3. p.age   -> 查 p 的 record 类型，再查 age 字段类型
     std::size_t lbr = leftValue.find('[');
     if (lbr != std::string::npos)
     {
@@ -191,6 +267,12 @@ std::string Parser::resolveLValueType(const std::string& leftValue) const {
 }
 
 std::string Parser::mergeNumericType(const std::string& leftType, const std::string& rightType, const Token& opToken) const {
+    // 算术表达式类型合并。
+    //
+    // 规则：
+    // - + - * / 两边都必须是 integer 或 real。
+    // - 只要有一边是 real，结果就是 real。
+    // - 两边都是 integer，结果就是 integer。
     auto isNumeric = [](const std::string& t)
     {
         return t == "integer" || t == "real";
@@ -207,6 +289,12 @@ std::string Parser::mergeNumericType(const std::string& leftType, const std::str
 }
 
 bool Parser::canAssign(const std::string& targetType, const std::string& sourceType) const {
+    // 赋值兼容检查。
+    //
+    // targetType 是左边变量类型，sourceType 是右边表达式类型。
+    // 例如：
+    //     realVar := intVar
+    // targetType=real, sourceType=integer，允许。
     if (targetType == sourceType)
     {
         return true;
@@ -219,150 +307,16 @@ bool Parser::canAssign(const std::string& targetType, const std::string& sourceT
     return false;
 }
 
-std::vector<Token> Parser::collectExpressionTokensFromCurrent() const
-{
-    std::vector<Token> collected;
-    int parenthesisDepth = 0;
-    int bracketDepth = 0;
-
-    for (std::size_t i = current_; i < tokens_.size(); ++i)
-    {
-        const Token& token = tokens_[i];
-        if (token.type == TokenType::END_OF_FILE)
-        {
-            break;
-        }
-
-        if (token.type == TokenType::DELIMITER && token.lexeme == "(")
-        {
-            ++parenthesisDepth;
-        }
-        else if (token.type == TokenType::DELIMITER && token.lexeme == ")")
-        {
-            if (parenthesisDepth == 0 && bracketDepth == 0)
-            {
-                break;
-            }
-            --parenthesisDepth;
-        }
-        else if (token.type == TokenType::DELIMITER && token.lexeme == "[")
-        {
-            ++bracketDepth;
-        }
-        else if (token.type == TokenType::DELIMITER && token.lexeme == "]")
-        {
-            if (bracketDepth == 0 && parenthesisDepth == 0)
-            {
-                break;
-            }
-            --bracketDepth;
-        }
-
-        if (parenthesisDepth == 0 && bracketDepth == 0)
-        {
-            if (token.type == TokenType::DELIMITER && (token.lexeme == ";" || token.lexeme == "," || token.lexeme == ":"))
-            {
-                break;
-            }
-            if (token.type == TokenType::KEYWORD &&
-                (token.lexeme == "then" || token.lexeme == "do" || token.lexeme == "else" || token.lexeme == "end"))
-            {
-                break;
-            }
-            if (token.type == TokenType::OPERATOR &&
-                (token.lexeme == "<" || token.lexeme == ">" || token.lexeme == "=" || token.lexeme == "!=" || token.lexeme == "<=" || token.lexeme == ">="))
-            {
-                break;
-            }
-        }
-
-        if (token.type == TokenType::IDENTIFIER
-            || token.type == TokenType::CONSTANT
-            || (token.type == TokenType::OPERATOR && (token.lexeme == "+" || token.lexeme == "-" || token.lexeme == "*" || token.lexeme == "/"))
-            || (token.type == TokenType::DELIMITER && (token.lexeme == "(" || token.lexeme == ")")))
-        {
-            // 变量因子归一化：a[i] / r.a / r.a[i] 在简单优先预检查中统一视作一个 i。
-            if (token.type == TokenType::IDENTIFIER)
-            {
-                collected.push_back(token);
-
-                std::size_t j = i + 1;
-                bool consumedSuffix = false;
-                while (j < tokens_.size())
-                {
-                    const Token& next = tokens_[j];
-                    if (next.type == TokenType::DELIMITER && next.lexeme == ".")
-                    {
-                        if (j + 1 < tokens_.size() && tokens_[j + 1].type == TokenType::IDENTIFIER)
-                        {
-                            j += 2;
-                            consumedSuffix = true;
-                            continue;
-                        }
-                        break;
-                    }
-                    if (next.type == TokenType::DELIMITER && next.lexeme == "[")
-                    {
-                        int localDepth = 1;
-                        ++j;
-                        while (j < tokens_.size() && localDepth > 0)
-                        {
-                            if (tokens_[j].type == TokenType::DELIMITER && tokens_[j].lexeme == "[") ++localDepth;
-                            else if (tokens_[j].type == TokenType::DELIMITER && tokens_[j].lexeme == "]") --localDepth;
-                            ++j;
-                        }
-                        consumedSuffix = true;
-                        continue;
-                    }
-                    break;
-                }
-                if (consumedSuffix)
-                {
-                    i = j - 1;
-                }
-                continue;
-            }
-
-            collected.push_back(token);
-        }
-    }
-    return collected;
-}
-
-std::vector<Token> Parser::collectConditionTokensFromCurrent() const
-{
-    std::vector<Token> collected;
-    int parenthesisDepth = 0;
-    int bracketDepth = 0;
-    for (std::size_t i = current_; i < tokens_.size(); ++i)
-    {
-        const Token& token = tokens_[i];
-        if (token.type == TokenType::END_OF_FILE)
-        {
-            break;
-        }
-        if (token.type == TokenType::DELIMITER && token.lexeme == "(") ++parenthesisDepth;
-        if (token.type == TokenType::DELIMITER && token.lexeme == ")")
-        {
-            if (parenthesisDepth == 0 && bracketDepth == 0) break;
-            --parenthesisDepth;
-        }
-        if (token.type == TokenType::DELIMITER && token.lexeme == "[") ++bracketDepth;
-        if (token.type == TokenType::DELIMITER && token.lexeme == "]") --bracketDepth;
-
-        if (parenthesisDepth == 0 && bracketDepth == 0 &&
-            token.type == TokenType::KEYWORD &&
-            (token.lexeme == "then" || token.lexeme == "do"))
-        {
-            break;
-        }
-        collected.push_back(token);
-    }
-    return collected;
-}
-
 std::string Parser::newTemp(const std::string& typeName)
 {
+    // 生成临时变量。
+    //
+    // 表达式中间结果不能丢，需要找地方保存。
+    // 例如 a + b * 4：
+    //     b * 4 的结果放进 t1
+    //     a + t1 的结果放进 t2
+    //
+    // tempIndex_ 每次加 1，所以临时变量名依次是 t1、t2、t3。
     std::string name = "t" + std::to_string(++tempIndex_);
     int size = typeTable_.getTypeSize(typeName);
     if (size <= 0)
@@ -372,117 +326,37 @@ std::string Parser::newTemp(const std::string& typeName)
     int addr = -1;
     if (currentFunctionName_.empty())
     {
+        // 主程序中的临时变量放在全局地址空间。
         addr = nextAddress_;
         nextAddress_ += size;
-        addActivationRecord(programName_, name, "tv", typeName, addr, size);
     }
     else
     {
+        // 函数内部的临时变量放在当前函数的局部空间后面。
         addr = currentLocalOffset_ + currentFunctionTempSize_;
         currentFunctionTempSize_ += size;
-        addActivationRecord(currentFunctionName_, name, "tv", typeName, addr, size);
     }
     symbolTable_.add({name, typeName, "temporary", addr, size});
-    if (!currentFunctionName_.empty())
-    {
-        // currentFunctionTempSize_ 已在上面累加。
-    }
-    traceAction("语义动作: 建立临时变量 " + name + " : " + typeName);
+    logParserAction("TEMP", "生成临时变量: " + name + "，类型=" + typeName);
     return name;
 }
 
 void Parser::emit(const std::string& op, const std::string& arg1, const std::string& arg2, const std::string& result)
 {
+    // 生成一条四元式。
+    //
+    // Parser 不直接执行程序，而是把源程序翻译成四元式。
+    // 后续优化器和 VM 都围绕四元式工作。
+    logParserAction("QUADRUPLE", "生成四元式: (" + op + ", " + arg1 + ", " + arg2 + ", " + result + ")");
     result_.quadruples.push_back({op, arg1, arg2, result});
-    traceAction("语义动作: 生成四元式 (" + op + ", " + arg1 + ", " + arg2 + ", " + result + ")");
-}
-
-void Parser::addActivationRecord(const std::string& scope, const std::string& name, const std::string& category,
-const std::string& type, int offset, int size)
-{
-    activationRecords_.push_back({scope, name, category, type, offset, size});
-}
-
-void Parser::buildActivationRecords()
-{
-    activationRecords_.clear();
-
-    const auto& symbols = symbolTable_.entries();
-
-    auto appendFrame = [&](const std::string& scope, int level)
-    {
-        int off = 0;
-        addActivationRecord(scope, "Old SP", "meta", "-", off++, 1);
-        addActivationRecord(scope, "返回地址", "meta", "-", off++, 1);
-        addActivationRecord(scope, "全局Display", "meta", "-", off++, 1);
-
-        std::vector<ParameterInfo> params;
-        for (const auto& p : parameterInfos_)
-        {
-            if (p.functionName == scope)
-            {
-                params.push_back(p);
-            }
-        }
-        std::sort(params.begin(), params.end(), [](const ParameterInfo& a, const ParameterInfo& b)
-        {
-            return a.offset < b.offset;
-        });
-
-        addActivationRecord(scope, "参数个数", "meta", "integer", off++, 1);
-        for (const auto& p : params)
-        {
-            int occupy = (p.passMode == "vn") ? 2 : p.size;
-            addActivationRecord(scope, p.name, p.passMode, p.type, off, occupy);
-            off += occupy;
-        }
-
-        addActivationRecord(scope, "Display表", "display", "-", off, level + 1);
-        off += (level + 1);
-
-        std::vector<SymbolEntry> locals;
-        for (const auto& s : symbols)
-        {
-            if (scope == programName_)
-            {
-                bool isGlobalVar = (s.kind == "variable" || s.kind == "record variable" || s.kind == "array variable");
-                if (isGlobalVar)
-                {
-                    locals.push_back(s);
-                }
-            }
-            else
-            {
-                std::string tag = " of " + scope;
-                bool isLocalVar = s.kind.rfind("local ", 0) == 0 && s.kind.find(tag) != std::string::npos;
-                if (isLocalVar)
-                {
-                    locals.push_back(s);
-                }
-            }
-        }
-
-        std::sort(locals.begin(), locals.end(), [](const SymbolEntry& a, const SymbolEntry& b)
-        {
-            return a.address < b.address;
-        });
-
-        for (const auto& v : locals)
-        {
-            addActivationRecord(scope, v.name, "v", v.typeName, off, v.size);
-            off += v.size;
-        }
-    };
-
-    appendFrame(programName_, 1);
-    for (const auto& f : functionInfos_)
-    {
-        appendFrame(f.name, f.level);
-    }
 }
 
 void Parser::buildBasicBlocks()
 {
+    // 基本块划分。
+    //
+    // 基本块是一段连续四元式，只有一个入口和一个出口。
+    // 优化器按基本块做局部优化，因为基本块内部没有复杂跳转，分析更简单。
     result_.basicBlocks.clear();
     if (result_.quadruples.empty())
     {
@@ -490,8 +364,16 @@ void Parser::buildBasicBlocks()
     }
 
     std::set<int> leaders;
+    // 第 0 条四元式一定是第一个基本块入口。
     leaders.insert(0);
 
+    // 第一遍扫描：把 if/el/ie 和 wh/do/we 的配对关系找出来。
+    //
+    // Parser 生成的是结构化控制流标记：
+    // - if / el / ie 表示 if-else
+    // - wh / do / we 表示 while
+    //
+    // 基本块划分需要知道这些结构的边界。
     struct IfCtx {
         int ifIndex = -1;
         int elIndex = -1;
@@ -558,12 +440,21 @@ void Parser::buildBasicBlocks()
         }
     }
 
+    // 第二遍扫描：根据控制流结构确定每个基本块的入口 leader。
+    //
+    // 常见 leader：
+    // - 程序第一条四元式
+    // - if 条件后 then 分支入口
+    // - else 分支入口
+    // - while 循环体入口
+    // - 循环结束后的下一条
     for (int i = 0; i < static_cast<int>(result_.quadruples.size()); ++i)
     {
         const Quadruple& q = result_.quadruples[i];
 
         if (q.op == "if")
         {
+            // if 后面第一条通常是 then 分支入口。
             if (i + 1 < static_cast<int>(result_.quadruples.size()))
             {
                 leaders.insert(i + 1);
@@ -584,6 +475,7 @@ void Parser::buildBasicBlocks()
             }
             if (falseTarget >= 0 && falseTarget < static_cast<int>(result_.quadruples.size()))
             {
+                // 条件为假时跳到 else 分支或 if 结束位置。
                 leaders.insert(falseTarget);
             }
             continue;
@@ -591,6 +483,7 @@ void Parser::buildBasicBlocks()
 
         if (q.op == "do")
         {
+            // do 后面第一条是 while 循环体入口。
             if (i + 1 < static_cast<int>(result_.quadruples.size()))
             {
                 leaders.insert(i + 1);
@@ -601,6 +494,7 @@ void Parser::buildBasicBlocks()
                 int falseTarget = f->second + 1;
                 if (falseTarget < static_cast<int>(result_.quadruples.size()))
                 {
+                    // while 条件为假时，跳到循环后面的第一条四元式。
                     leaders.insert(falseTarget);
                 }
             }
@@ -646,6 +540,7 @@ void Parser::buildBasicBlocks()
     std::vector<int> sortedLeaders(leaders.begin(), leaders.end());
     std::sort(sortedLeaders.begin(), sortedLeaders.end());
 
+    // leader 已排序后，相邻两个 leader 之间就是一个基本块。
     for (int i = 0; i < static_cast<int>(sortedLeaders.size()); ++i)
     {
         BasicBlock block;
@@ -658,49 +553,4 @@ void Parser::buildBasicBlocks()
         result_.basicBlocks.push_back(block);
     }
 }
-
-void Parser::traceEnterRule(const std::string& ruleName)
-{
-    std::string indent(static_cast<std::size_t>(parserTraceDepth_) * 2, ' ');
-    parserTraceTree_.push_back(indent + "入口 子程序 " + ruleName);
-    parserRuleStack_.push_back(ruleName);
-    ++parserTraceDepth_;
-}
-
-void Parser::traceExitRule(const std::string& ruleName)
-{
-    if (parserTraceDepth_ > 0)
-    {
-        --parserTraceDepth_;
-    }
-    std::string indent(static_cast<std::size_t>(parserTraceDepth_) * 2, ' ');
-    parserTraceTree_.push_back(indent + "出口 子程序 " + ruleName);
-    if (!parserRuleStack_.empty())
-    {
-        parserRuleStack_.pop_back();
-    }
-}
-
-void Parser::traceStep(const std::string& message)
-{
-    parserStepLog_.push_back(message);
-    parserStepRuleNames_.push_back(currentRuleContext());
-}
-
-void Parser::traceAction(const std::string& message)
-{
-    parserActionLog_.push_back(message);
-    parserActionRuleNames_.push_back(currentRuleContext());
-}
-
-std::string Parser::currentRuleContext() const
-{
-    if (parserRuleStack_.empty())
-    {
-        return "<GLOBAL>";
-    }
-    return parserRuleStack_.back();
-}
-
-
 

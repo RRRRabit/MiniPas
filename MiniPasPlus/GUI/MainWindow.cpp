@@ -1,5 +1,8 @@
 #include "MainWindow.h"
 #include "CompilerFacade.h"
+#include "CompilerBackendStages.h"
+#include "SimplePrecedence.h"
+#include "TargetCodeTrace.h"
 #include "Token.h"
 #include <QApplication>
 #include <QFont>
@@ -27,6 +30,102 @@
 #include <set>
 #include <utility>
 #include <vector>
+
+// MainWindow.cpp 是 GUI 展示层，代码量很大，但大多数代码只是：
+// 1. 创建按钮、输入框、表格；
+// 2. 调用 CompilerFacade 获取编译结果；
+// 3. 把 CompileResult 里的数据填进表格；
+// 4. 做源代码高亮和错误提示。
+//
+// 它不是编译器核心。答辩读代码时，核心逻辑优先看 Lexer/Parser/VirtualMachine。
+
+namespace {
+
+// GUI 专用的活动记录展示项。
+// 它只用于 VALL 表格，不参与真正的虚拟机执行。
+struct DisplayActivationRecordItem {
+    std::string scope;
+    std::string name;
+    int offset = 0;
+    int size = 0;
+};
+
+std::vector<DisplayActivationRecordItem> buildDisplayActivationRecords(const CompileResult& result)
+{
+    // 根据符号表、函数表、参数表拼出“活动记录/栈帧”的展示内容。
+    // 这是课程设计可视化要求的一部分。
+    std::vector<DisplayActivationRecordItem> records;
+    std::string programName;
+    for (const auto& symbol : result.symbols) {
+        if (symbol.kind == "program") {
+            programName = symbol.name;
+            break;
+        }
+    }
+    if (programName.empty()) {
+        return records;
+    }
+
+    auto appendFrame = [&](const std::string& scope, int level) {
+        // 为一个作用域生成展示用栈帧：
+        // Old SP、返回地址、Display、参数、局部变量等。
+        int off = 0;
+        records.push_back({scope, "Old SP", off++, 1});
+        records.push_back({scope, "返回地址", off++, 1});
+        records.push_back({scope, "全局Display", off++, 1});
+
+        std::vector<ParameterInfo> params;
+        for (const auto& p : result.parameterTable) {
+            if (p.functionName == scope) {
+                params.push_back(p);
+            }
+        }
+        std::sort(params.begin(), params.end(), [](const ParameterInfo& a, const ParameterInfo& b) {
+            return a.offset < b.offset;
+        });
+
+        records.push_back({scope, "参数个数", off++, 1});
+        for (const auto& p : params) {
+            int occupy = (p.passMode == "vn") ? 2 : p.size;
+            records.push_back({scope, p.name, off, occupy});
+            off += occupy;
+        }
+
+        records.push_back({scope, "Display表", off, level + 1});
+        off += level + 1;
+
+        std::vector<Symbol> locals;
+        for (const auto& s : result.symbols) {
+            if (scope == programName) {
+                if (s.kind == "variable" || s.kind == "record variable" || s.kind == "array variable") {
+                    locals.push_back(s);
+                }
+            } else {
+                std::string tag = " of " + scope;
+                if (s.kind.rfind("local ", 0) == 0 && s.kind.find(tag) != std::string::npos) {
+                    locals.push_back(s);
+                }
+            }
+        }
+
+        std::sort(locals.begin(), locals.end(), [](const Symbol& a, const Symbol& b) {
+            return a.address < b.address;
+        });
+
+        for (const auto& v : locals) {
+            records.push_back({scope, v.name, off, v.size});
+            off += v.size;
+        }
+    };
+
+    appendFrame(programName, 1);
+    for (const auto& f : result.functionTable) {
+        appendFrame(f.name, f.level);
+    }
+    return records;
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
@@ -65,10 +164,12 @@ MainWindow::MainWindow(QWidget* parent)
       parserStepTable_(nullptr),
       parserActionTable_(nullptr),
       highlightedTokenRow_(-1) {
+    // 构造函数只负责初始化成员并创建界面。
     buildUi();
 }
 
 void MainWindow::buildUi() {
+    // 创建整个主界面：左侧源代码输入，右侧结果表格。
     setWindowTitle("MiniPas+ 可视化编译器前端系统");
     resize(1200, 760);
 
@@ -508,6 +609,7 @@ void MainWindow::buildUi() {
 }
 
 QWidget* MainWindow::createSymbolSystemPage() {
+    // 创建“符号系统”页面，里面再分 SYNBL、TYPEL、RINFL、AINFL 等子表。
     auto* page = new QWidget(tabWidget_);
     auto* layout = new QVBoxLayout(page);
     auto* label = new QLabel("符号表系统", page);
@@ -562,6 +664,7 @@ QWidget* MainWindow::createSymbolSystemPage() {
 }
 
 QWidget* MainWindow::createTablePage(const QString& description, QTableWidget* table) {
+    // 创建一个通用表格页面：上方说明文字，下方 QTableWidget。
     auto* page = new QWidget(tabWidget_);
     auto* layout = new QVBoxLayout(page);
     auto* label = new QLabel(description, page);
@@ -572,6 +675,7 @@ QWidget* MainWindow::createTablePage(const QString& description, QTableWidget* t
 }
 
 void MainWindow::setupTable(QTableWidget* table, const QStringList& headers) {
+    // 统一设置表头、列宽、选择方式和基础样式。
     table->setColumnCount(headers.size());
     table->setHorizontalHeaderLabels(headers);
     table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -591,6 +695,8 @@ void MainWindow::setupTable(QTableWidget* table, const QStringList& headers) {
 }
 
 void MainWindow::compileAndRun() {
+    // “编译运行”按钮最终进入这里。
+    // GUI 不直接创建 Lexer/Parser/VM，而是调用 CompilerFacade 统一完成。
     clearOutput();
 
     CompilerFacade compiler;
@@ -658,6 +764,7 @@ void MainWindow::compileAndRun() {
 }
 
 void MainWindow::clearOutput() {
+    // 清空所有结果表格和高亮状态。
     tokenTable_->setRowCount(0);
     keywordTable_->setRowCount(0);
     delimiterTable_->setRowCount(0);
@@ -708,6 +815,7 @@ void MainWindow::clearOutput() {
 }
 
 void MainWindow::fillAllTables(const CompileResult& result) {
+    // 一次编译会产生多类结果，这里统一分发到各个展示表。
     lastResult_ = result;
     fillTokenTable(result);
     fillKeywordAndDelimiterTables(result);
@@ -722,6 +830,7 @@ void MainWindow::fillAllTables(const CompileResult& result) {
 }
 
 void MainWindow::fillTokenTable(const CompileResult& result) {
+    // Token 表：展示词法分析输出。
     tokenTable_->setRowCount(static_cast<int>(result.tokens.size()));
     for (int row = 0; row < static_cast<int>(result.tokens.size()); ++row) {
         const Token& token = result.tokens[row];
@@ -731,6 +840,7 @@ void MainWindow::fillTokenTable(const CompileResult& result) {
 }
 
 void MainWindow::fillKeywordAndDelimiterTables(const CompileResult& result) {
+    // 关键字表和界符表来自 Lexer 的固定表。
     keywordTable_->setRowCount(static_cast<int>(result.keywordTable.size()));
     for (int row = 0; row < static_cast<int>(result.keywordTable.size()); ++row) {
         const auto& entry = result.keywordTable[row];
@@ -747,6 +857,7 @@ void MainWindow::fillKeywordAndDelimiterTables(const CompileResult& result) {
 }
 
 void MainWindow::fillIdentifierAndConstantTables(const CompileResult& result) {
+    // 标识符表和常量表来自词法分析阶段。
     identifierTable_->setRowCount(static_cast<int>(result.identifierTable.size()));
     for (int row = 0; row < static_cast<int>(result.identifierTable.size()); ++row) {
         identifierTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
@@ -763,6 +874,7 @@ void MainWindow::fillIdentifierAndConstantTables(const CompileResult& result) {
 }
 
 void MainWindow::fillSymbolTable(const CompileResult& result) {
+    // 符号系统拆成多张课程设计表格分别展示。
     fillSynblTable(result);
     fillTypelTable(result);
     fillRinflTable(result);
@@ -966,20 +1078,22 @@ void MainWindow::fillLenlTable(const CompileResult& result) {
 }
 
 void MainWindow::fillVallTable(const CompileResult& result) {
+    // VALL 活动记录展示表。这里只是根据 CompileResult 重新组织显示数据。
+    std::vector<DisplayActivationRecordItem> activationRecords = buildDisplayActivationRecords(result);
     int extraSeparators = 0;
     std::string lastScope;
-    for (const auto& item : result.activationRecords) {
+    for (const auto& item : activationRecords) {
         if (!lastScope.empty() && item.scope != lastScope) {
             ++extraSeparators;
         }
         lastScope = item.scope;
     }
 
-    vallTable_->setRowCount(static_cast<int>(result.activationRecords.size()) + extraSeparators);
+    vallTable_->setRowCount(static_cast<int>(activationRecords.size()) + extraSeparators);
 
     int row = 0;
     lastScope.clear();
-    for (const auto& item : result.activationRecords) {
+    for (const auto& item : activationRecords) {
         if (!lastScope.empty() && item.scope != lastScope) {
             vallTable_->setItem(row, 0, new QTableWidgetItem("----"));
             vallTable_->setItem(row, 1, new QTableWidgetItem("----"));
@@ -1148,10 +1262,15 @@ void MainWindow::fillQuadrupleOptimizeTable(const CompileResult& result) {
 }
 
 void MainWindow::fillTargetCodeTable(const CompileResult& result) {
-    targetCodeTable_->setRowCount(static_cast<int>(result.targetTrace.size()));
+    // 目标代码展示表。这里生成的是 GUI 需要的展示轨迹，不改变核心编译结果。
+    std::vector<BasicBlock> blocks = backend::buildBasicBlocksFromQuads(result.optimizedQuadruples);
+    BackendGenerationResult target = backend::generateTargetArtifacts(
+        result.optimizedQuadruples, blocks, result.symbols);
+
+    targetCodeTable_->setRowCount(static_cast<int>(target.trace.size()));
     targetCodeTable_->clearSpans();
-    for (int row = 0; row < static_cast<int>(result.targetTrace.size()); ++row) {
-        const TargetTraceItem& t = result.targetTrace[row];
+    for (int row = 0; row < static_cast<int>(target.trace.size()); ++row) {
+        const TargetTraceItem& t = target.trace[row];
         targetCodeTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(t.basicBlock)));
         targetCodeTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(t.quadruple)));
         targetCodeTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(t.targetCode)));
@@ -1185,6 +1304,7 @@ void MainWindow::fillTargetCodeTable(const CompileResult& result) {
 }
 
 void MainWindow::fillVmResultTable(const CompileResult& result) {
+    // VM 运行结果表：先展示执行摘要，再展示最终变量值。
     const int summaryRows = 6;
     vmResultTable_->setRowCount(summaryRows + static_cast<int>(result.runtimeValues.size()));
 
@@ -1224,11 +1344,9 @@ void MainWindow::fillVmResultTable(const CompileResult& result) {
 }
 
 void MainWindow::fillSimplePrecedenceView(const CompileResult& result) {
-    std::vector<SimplePrecedenceResult> all;
-    if (result.simplePrecedenceAll.empty()) {
-        all.push_back(result.simplePrecedence);
-    } else {
-        all = result.simplePrecedenceAll;
+    std::vector<SimplePrecedenceResult> all = simple_precedence::analyzeAllExpressionsFromTokens(result.tokens);
+    if (all.empty()) {
+        all.push_back(simple_precedence::analyzeFromTokens(result.tokens));
     }
     const SimplePrecedenceResult& sp = all.front();
 
@@ -1306,56 +1424,52 @@ void MainWindow::fillSimplePrecedenceView(const CompileResult& result) {
 }
 
 void MainWindow::fillParserTraceView(const CompileResult& result) {
+    // 递归分析过程页的数据来自 Parser 写入的展示日志：
+    // parserTrace 负责左侧调用树；
+    // parserSteps 负责右上 Token 匹配日志；
+    // parserActions 负责右下四元式/临时变量动作日志。
+    //
+    // 这些数据只用于 GUI 展示，不参与真正的编译执行。
     if (parserTraceTreeWidget_ != nullptr) {
         parserTraceTreeWidget_->clear();
         std::vector<QTreeWidgetItem*> stack;
-        for (const auto& lineStd : result.parserTraceTree) {
-            QString line = QString::fromStdString(lineStd);
-            int spaces = 0;
-            while (spaces < line.size() && line[spaces] == ' ') {
-                ++spaces;
-            }
-            int depth = spaces / 2;
-            QString text = line.mid(spaces);
-            auto* item = new QTreeWidgetItem(QStringList{text});
-            QString ruleName = text;
-            if (ruleName.startsWith("入口 子程序 ")) {
-                ruleName = ruleName.mid(QString("入口 子程序 ").size()).trimmed();
-            } else if (ruleName.startsWith("出口 子程序 ")) {
-                ruleName = ruleName.mid(QString("出口 子程序 ").size()).trimmed();
-            }
-            item->setData(0, Qt::UserRole, ruleName);
-            while (static_cast<int>(stack.size()) > depth) {
-                stack.pop_back();
-            }
-            if (stack.empty()) {
+        for (const auto& node : result.parserTrace) {
+            auto* item = new QTreeWidgetItem(QStringList(QString::fromStdString(node.text)));
+            item->setData(0, Qt::UserRole, QString::fromStdString(node.rule));
+
+            const int depth = std::max(0, node.depth);
+            if (depth == 0 || stack.empty()) {
                 parserTraceTreeWidget_->addTopLevelItem(item);
             } else {
-                stack.back()->addChild(item);
+                const int parentDepth = std::min(depth - 1, static_cast<int>(stack.size()) - 1);
+                stack[parentDepth]->addChild(item);
             }
-            stack.push_back(item);
+
+            if (depth >= static_cast<int>(stack.size())) {
+                stack.resize(depth + 1);
+            }
+            stack[depth] = item;
+            stack.resize(depth + 1);
         }
         parserTraceTreeWidget_->expandAll();
     }
 
     if (parserStepTable_ != nullptr) {
-        parserStepTable_->setRowCount(static_cast<int>(result.parserStepLog.size()));
-        for (int row = 0; row < static_cast<int>(result.parserStepLog.size()); ++row) {
-            auto* item = new QTableWidgetItem(QString::fromStdString(result.parserStepLog[row]));
-            if (row < static_cast<int>(result.parserStepRuleNames.size())) {
-                item->setData(Qt::UserRole, QString::fromStdString(result.parserStepRuleNames[row]));
-            }
+        parserStepTable_->setRowCount(static_cast<int>(result.parserSteps.size()));
+        for (int row = 0; row < static_cast<int>(result.parserSteps.size()); ++row) {
+            const ParserLogItem& step = result.parserSteps[row];
+            auto* item = new QTableWidgetItem(QString::fromStdString(step.text));
+            item->setData(Qt::UserRole, QString::fromStdString(step.rule));
             parserStepTable_->setItem(row, 0, item);
         }
     }
 
     if (parserActionTable_ != nullptr) {
-        parserActionTable_->setRowCount(static_cast<int>(result.parserActionLog.size()));
-        for (int row = 0; row < static_cast<int>(result.parserActionLog.size()); ++row) {
-            auto* item = new QTableWidgetItem(QString::fromStdString(result.parserActionLog[row]));
-            if (row < static_cast<int>(result.parserActionRuleNames.size())) {
-                item->setData(Qt::UserRole, QString::fromStdString(result.parserActionRuleNames[row]));
-            }
+        parserActionTable_->setRowCount(static_cast<int>(result.parserActions.size()));
+        for (int row = 0; row < static_cast<int>(result.parserActions.size()); ++row) {
+            const ParserLogItem& action = result.parserActions[row];
+            auto* item = new QTableWidgetItem(QString::fromStdString(action.text));
+            item->setData(Qt::UserRole, QString::fromStdString(action.rule));
             parserActionTable_->setItem(row, 0, item);
         }
     }
@@ -1402,6 +1516,7 @@ void MainWindow::highlightParserRowsByRule(const QString& ruleName) {
 }
 
 void MainWindow::fillRawQuadrupleTable(const CompileResult& result) {
+    // 原始四元式表：展示优化前的中间代码。
     rawQuadrupleTable_->setRowCount(static_cast<int>(result.quadruples.size()));
     for (int i = 0; i < static_cast<int>(result.quadruples.size()); ++i) {
         const Quadruple& q = result.quadruples[i];
@@ -1414,16 +1529,19 @@ void MainWindow::fillRawQuadrupleTable(const CompileResult& result) {
 }
 
 void MainWindow::setStatusSuccess(const QString& message) {
+    // 状态栏成功样式。
     statusLabel_->setPlainText(message);
     statusLabel_->setStyleSheet("color: #16833a; font-weight: 700;");
 }
 
 void MainWindow::setStatusError(const QString& message) {
+    // 状态栏错误样式。
     statusLabel_->setPlainText(message);
     statusLabel_->setStyleSheet("color: #c62828; font-weight: 700;");
 }
 
 QString MainWindow::typeRef(const std::string& typeName) const {
+    // 把内部类型名转换成表格里使用的短名字。
     if (typeName == "integer") {
         return "itp";
     }
@@ -1440,6 +1558,7 @@ QString MainWindow::typeRef(const std::string& typeName) const {
 }
 
 QString MainWindow::synblTypeRef(const Symbol& symbol) const {
+    // 生成 SYNBL 表 TYPEL 列的显示文本。
     if (symbol.typeName == "integer" || symbol.typeName == "real"
         || symbol.typeName == "char" || symbol.typeName == "boolean") {
         return typeRef(symbol.typeName);
@@ -1454,6 +1573,7 @@ QString MainWindow::synblTypeRef(const Symbol& symbol) const {
 }
 
 QString MainWindow::synblCategory(const Symbol& symbol) const {
+    // 把内部 kind 转换成课程设计表格中的分类代码。
     if (symbol.kind == "program") {
         return "p";
     }
@@ -1519,6 +1639,7 @@ QString MainWindow::lenlPointer(const std::string& typeName, const CompileResult
 }
 
 int MainWindow::positionFromLineColumn(int line, int column) const {
+    // 将 line/column 换算成 QTextDocument 中的一维字符位置。
     if (line <= 0 || column <= 0) {
         return -1;
     }
@@ -1537,6 +1658,7 @@ int MainWindow::positionFromLineColumn(int line, int column) const {
 }
 
 void MainWindow::highlightTokenAt(int line, int column, const QString& lexeme) {
+    // 按错误位置或 Token 位置高亮源代码。
     clearSourceHighlight();
     int pos = positionFromLineColumn(line, column);
     if (pos < 0) {
@@ -1559,6 +1681,7 @@ void MainWindow::highlightTokenAt(int line, int column, const QString& lexeme) {
 }
 
 void MainWindow::highlightLexemeOccurrences(const QString& lexeme) {
+    // 在源代码中高亮所有相同词素。
     if (lexeme.isEmpty()) {
         clearSourceHighlight();
         return;
@@ -1605,6 +1728,7 @@ void MainWindow::highlightLexemeOccurrences(const QString& lexeme) {
 }
 
 void MainWindow::connectTableHighlight(QTableWidget* table) {
+    // 给表格连接点击高亮逻辑。
     if (table == nullptr) {
         return;
     }
@@ -1614,6 +1738,7 @@ void MainWindow::connectTableHighlight(QTableWidget* table) {
 }
 
 void MainWindow::onGenericTableCellClicked(QTableWidget* table, int row, int column) {
+    // 用户点击任意结果表格单元格后，尝试在源代码中找到对应文本。
     if (table == nullptr || row < 0 || column < 0) {
         return;
     }
@@ -1644,6 +1769,7 @@ void MainWindow::onGenericTableCellClicked(QTableWidget* table, int row, int col
 }
 
 bool MainWindow::highlightFromCellText(const QString& text) {
+    // 从表格文本中提取标识符/数字，再尝试匹配源代码。
     const QString source = sourceEdit_->toPlainText();
     if (source.isEmpty()) {
         return false;

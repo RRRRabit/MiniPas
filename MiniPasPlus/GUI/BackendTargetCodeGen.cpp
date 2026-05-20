@@ -1,4 +1,4 @@
-#include "CompilerBackendStages.h"
+#include "TargetCodeTrace.h"
 
 #include <algorithm>
 #include <cctype>
@@ -10,11 +10,20 @@
 #include <unordered_set>
 #include <vector>
 
+// 这个文件是 GUI 后端展示模块。
+//
+// 核心运行真正使用的是 VirtualMachine.cpp 中的 VM 指令生成和执行。
+// 这里额外生成“目标代码展示表”和 RDL/SEM 轨迹，是为了课程设计界面展示：
+// - 哪个基本块生成了哪些目标代码；
+// - 每条四元式对应哪些目标指令；
+// - 变量在基本块内是否仍然活跃。
+
 namespace
 {
 
 bool isNumberLiteral(const std::string& s)
 {
+    // 判断字符串是否为数字常量。
     if (s.empty())
     {
         return false;
@@ -27,6 +36,7 @@ bool isNumberLiteral(const std::string& s)
 
 bool isTempName(const std::string& s)
 {
+    // 判断名字是否像临时变量 t1、t2。
     if (s.size() < 2 || s[0] != 't')
     {
         return false;
@@ -45,6 +55,7 @@ bool isTempName(const std::string& s)
 
 bool isVariableOperand(const std::string& s)
 {
+    // 过滤掉空占位符、数字常量、字符常量，剩下的才按变量处理。
     if (s.empty() || s == "_")
     {
         return false;
@@ -63,6 +74,7 @@ bool isVariableOperand(const std::string& s)
 
 std::string opToTarget(const std::string& op)
 {
+    // 把四元式运算符转换成展示用目标指令名。
     if (op == "+") return "ADD";
     if (op == "-") return "SUB";
     if (op == "*") return "MUL";
@@ -78,6 +90,7 @@ std::string opToTarget(const std::string& op)
 
 struct QuadLiveInfo
 {
+    // 某条四元式的三个操作数字段在该位置之后是否还会被使用。
     bool arg1Live = false;
     bool arg2Live = false;
     bool resultLive = false;
@@ -88,6 +101,9 @@ std::vector<QuadLiveInfo> buildLiveness(
     const std::vector<BasicBlock>& blocks,
     const std::vector<Symbol>& symbols)
 {
+    // 活跃信息分析。
+    // 它从基本块末尾往前看：如果一个变量后面还要读，就是 live。
+    // 这个信息只用于 GUI 展示，不影响 VirtualMachine 的真实执行。
     std::unordered_set<std::string> temporaryNames;
     for (const auto& s : symbols)
     {
@@ -145,6 +161,8 @@ std::vector<QuadLiveInfo> buildLiveness(
 
 struct GeneratedInstruction
 {
+    // 生成中的目标指令。
+    // target 用来暂存跳转目标，最后再转成标签文本。
     std::string op;
     std::string a;
     std::string b;
@@ -176,6 +194,7 @@ struct QuadProcessMeta
 
 std::map<int, int> buildQuadToBlock(const std::vector<Quadruple>& quads, const std::vector<BasicBlock>& blocks)
 {
+    // 建立“四元式下标 -> 基本块编号”的映射，方便目标代码表显示 B1/B2。
     std::map<int, int> quadToBlock;
     for (const auto& b : blocks)
     {
@@ -195,6 +214,7 @@ void buildIfMaps(
     std::map<int, int>& ifToEndIf,
     std::map<int, int>& ifToElse)
 {
+    // 配对 if/el/ie，得到 if 的 false 分支和结束位置。
     std::vector<IfBranchContext> ifContextStack;
     for (int i = 0; i < static_cast<int>(quads.size()); ++i)
     {

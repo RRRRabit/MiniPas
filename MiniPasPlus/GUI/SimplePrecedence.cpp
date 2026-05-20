@@ -4,11 +4,17 @@
 #include <sstream>
 #include <unordered_map>
 
+// 简单优先分析是 GUI 教学展示模块。
+// 它只分析表达式的移进/规约过程，不参与真正的 Parser 编译流程。
+// 真正生成四元式的是 Parser.cpp；这里生成的是给表格看的步骤。
+
 namespace
 {
 
 struct ParserCore
 {
+    // 表达式文法使用的符号：
+    // E 表达式，T 项，F 因子，i 代表标识符/常量，# 是输入结束符。
     std::vector<std::string> symbols = {"E", "T", "F", "i", "+", "*", "(", ")", "#"};
     std::unordered_map<std::string, int> index;
     std::vector<std::vector<std::string>> table;
@@ -16,6 +22,9 @@ struct ParserCore
 
 ParserCore buildCore()
 {
+    // 构造简单优先关系表。
+    // 表格单元格含义：
+    // "<" 表示移进，">" 表示规约，"=" 表示同一产生式内部的相邻符号。
     ParserCore core;
     for (int i = 0; i < static_cast<int>(core.symbols.size()); ++i)
     {
@@ -74,6 +83,8 @@ ParserCore buildCore()
 
 bool isExprToken(const Token& token)
 {
+    // 判断一个 Token 是否可能属于表达式。
+    // 为了展示简单，标识符和常量统一看成 i。
     if (token.type == TokenType::IDENTIFIER || token.type == TokenType::CONSTANT)
     {
         return true;
@@ -90,6 +101,7 @@ bool isRelOp(const Token& token);
 
 std::vector<Token> extractFirstExpression(const std::vector<Token>& tokens)
 {
+    // 从完整 Token 序列里提取第一个赋值语句右侧表达式。
     std::vector<Token> expression;
     bool afterAssign = false;
     int parenthesisDepth = 0;
@@ -123,6 +135,7 @@ std::vector<Token> extractFirstExpression(const std::vector<Token>& tokens)
 
 std::vector<std::vector<Token>> extractAllExpressions(const std::vector<Token>& tokens)
 {
+    // 从所有赋值语句中提取右侧表达式。
     std::vector<std::vector<Token>> expressions;
     for (std::size_t i = 0; i < tokens.size(); ++i)
     {
@@ -165,6 +178,7 @@ std::vector<std::vector<Token>> extractAllExpressions(const std::vector<Token>& 
 
 struct CollectedSpan
 {
+    // 用于记录从源程序中截取出来的一段表达式或条件。
     std::size_t startIndex = 0;
     std::string kind; // assign / condition
     std::vector<Token> tokens;

@@ -6,6 +6,16 @@
 #include <vector>
 
 // record 字段信息：对应课程资料中结构表 RINFL 的一个“域”。
+//
+// 例如：
+//     type person = record
+//         age: integer;
+//         score: real;
+//     end;
+//
+// 会产生两个 FieldInfo：
+//     age   : integer
+//     score : real
 struct FieldInfo {
     std::string name;
     std::string type;
@@ -17,6 +27,9 @@ struct FieldInfo {
 };
 
 // record 类型信息：保存字段列表以及整个 record 占用的总字节数。
+//
+// record 本身不是变量，它是“类型模板”。
+// 真正的变量声明例如 p: person; 会在符号表里引用这个类型名。
 struct RecordType {
     std::string name;
     std::vector<FieldInfo> fields;
@@ -24,6 +37,11 @@ struct RecordType {
 };
 
 // 数组类型信息：保存下界、上界、成分类型和总长度。
+//
+// 例如：
+//     type arr = array[1..5] of integer;
+//
+// low=1, high=5, elementType="integer"。
 struct ArrayType {
     std::string name;
     int low = 0;
@@ -33,7 +51,16 @@ struct ArrayType {
     int totalSize = 0;
 };
 
-// 类型表：保存基本类型长度和用户通过 type 声明的 record/array 类型。
+// 类型表：保存用户通过 type 声明的 record/array 类型。
+//
+// 基本类型 integer/real/char/boolean 不需要单独存到 vector，
+// getTypeSize 会直接按名字返回固定长度。
+//
+// Parser 什么时候用 TypeTable？
+// - 声明 record/array 类型时，把类型加入 TypeTable。
+// - 声明变量时，检查类型名是否存在。
+// - 使用 p.age 时，检查 age 是否真是 record 字段。
+// - 使用 a[i] 时，检查 a 是否真是 array，并取出元素类型。
 class TypeTable {
 public:
     // 添加 record 类型，并自动计算每个字段的 offset 和 size。
