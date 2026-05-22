@@ -130,9 +130,18 @@ bool VirtualMachine::executeBinaryInstruction(const VMInstruction& instruction, 
     double resultValue = 0.0;
 
     // 算术运算：结果仍然是数字。
-    if (instruction.op == "ADD") resultValue = leftValue + rightValue;
-    else if (instruction.op == "SUB") resultValue = leftValue - rightValue;
-    else if (instruction.op == "MUL") resultValue = leftValue * rightValue;
+    if (instruction.op == "ADD")
+    {
+        resultValue = leftValue + rightValue;
+    }
+    else if (instruction.op == "SUB")
+    {
+        resultValue = leftValue - rightValue;
+    }
+    else if (instruction.op == "MUL")
+    {
+        resultValue = leftValue * rightValue;
+    }
     else if (instruction.op == "DIV")
     {
         if (rightValue == 0.0)
@@ -143,14 +152,38 @@ bool VirtualMachine::executeBinaryInstruction(const VMInstruction& instruction, 
     }
     // 关系运算：true 用 1.0 表示，false 用 0.0 表示。
     // 这样后面的 FJ/TJ 跳转只需要判断是不是 0。
-    else if (instruction.op == "LT") resultValue = (leftValue < rightValue) ? 1.0 : 0.0;
-    else if (instruction.op == "GT") resultValue = (leftValue > rightValue) ? 1.0 : 0.0;
-    else if (instruction.op == "EQ") resultValue = (leftValue == rightValue) ? 1.0 : 0.0;
-    else if (instruction.op == "LE") resultValue = (leftValue <= rightValue) ? 1.0 : 0.0;
-    else if (instruction.op == "GE") resultValue = (leftValue >= rightValue) ? 1.0 : 0.0;
-    else if (instruction.op == "NE") resultValue = (leftValue != rightValue) ? 1.0 : 0.0;
-    else if (instruction.op == "AND") resultValue = (isTrue(leftValue) && isTrue(rightValue)) ? 1.0 : 0.0;
-    else if (instruction.op == "OR") resultValue = (isTrue(leftValue) || isTrue(rightValue)) ? 1.0 : 0.0;
+    else if (instruction.op == "LT")
+    {
+        resultValue = (leftValue < rightValue) ? 1.0 : 0.0;
+    }
+    else if (instruction.op == "GT")
+    {
+        resultValue = (leftValue > rightValue) ? 1.0 : 0.0;
+    }
+    else if (instruction.op == "EQ")
+    {
+        resultValue = (leftValue == rightValue) ? 1.0 : 0.0;
+    }
+    else if (instruction.op == "LE")
+    {
+        resultValue = (leftValue <= rightValue) ? 1.0 : 0.0;
+    }
+    else if (instruction.op == "GE")
+    {
+        resultValue = (leftValue >= rightValue) ? 1.0 : 0.0;
+    }
+    else if (instruction.op == "NE")
+    {
+        resultValue = (leftValue != rightValue) ? 1.0 : 0.0;
+    }
+    else if (instruction.op == "AND")
+    {
+        resultValue = (isTrue(leftValue) && isTrue(rightValue)) ? 1.0 : 0.0;
+    }
+    else if (instruction.op == "OR")
+    {
+        resultValue = (isTrue(leftValue) || isTrue(rightValue)) ? 1.0 : 0.0;
+    }
 
     // 把运算结果写回目标变量，然后顺序执行下一条。
     writeValue(instruction.a, resultValue);
@@ -385,16 +418,46 @@ std::string opToVm(const std::string& op)
 {
     // 四元式里的运算符是 "+", "<=" 这种源语言风格；
     // VM 指令使用 ADD、LE 这种更像汇编的名字。
-    if (op == "+") return "ADD";
-    if (op == "-") return "SUB";
-    if (op == "*") return "MUL";
-    if (op == "/") return "DIV";
-    if (op == "<") return "LT";
-    if (op == ">") return "GT";
-    if (op == "=") return "EQ";
-    if (op == "!=") return "NE";
-    if (op == "<=") return "LE";
-    if (op == ">=") return "GE";
+    if (op == "+")
+    {
+        return "ADD";
+    }
+    if (op == "-")
+    {
+        return "SUB";
+    }
+    if (op == "*")
+    {
+        return "MUL";
+    }
+    if (op == "/")
+    {
+        return "DIV";
+    }
+    if (op == "<")
+    {
+        return "LT";
+    }
+    if (op == ">")
+    {
+        return "GT";
+    }
+    if (op == "=")
+    {
+        return "EQ";
+    }
+    if (op == "!=")
+    {
+        return "NE";
+    }
+    if (op == "<=")
+    {
+        return "LE";
+    }
+    if (op == ">=")
+    {
+        return "GE";
+    }
     return "";
 }
 

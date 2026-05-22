@@ -1078,7 +1078,9 @@ void MainWindow::fillQuadrupleOptimizeTable(const CompileResult& result) {
             if (q.op == "if") {
                 ifStack.push_back({i, -1});
             } else if (q.op == "el") {
-                if (!ifStack.empty()) ifStack.back().elIndex = i;
+                if (!ifStack.empty()) {
+                    ifStack.back().elIndex = i;
+                }
             } else if (q.op == "ie") {
                 if (!ifStack.empty()) {
                     ifToIe[ifStack.back().ifIndex] = i;
@@ -1095,36 +1097,54 @@ void MainWindow::fillQuadrupleOptimizeTable(const CompileResult& result) {
                     DoCtx ctx = doStack.back();
                     doStack.pop_back();
                     doToWe[ctx.doIndex] = i;
-                    if (ctx.whIndex >= 0) weToWh[i] = ctx.whIndex;
+                    if (ctx.whIndex >= 0) {
+                        weToWh[i] = ctx.whIndex;
+                    }
                 }
-                if (!whStack.empty()) whStack.pop_back();
+                if (!whStack.empty()) {
+                    whStack.pop_back();
+                }
             }
         }
 
         for (int i = 0; i < static_cast<int>(quads.size()); ++i) {
             const Quadruple& q = quads[i];
             if (q.op == "if") {
-                if (i + 1 < static_cast<int>(quads.size())) leaders.insert(i + 1);
+                if (i + 1 < static_cast<int>(quads.size())) {
+                    leaders.insert(i + 1);
+                }
                 int falseTarget = -1;
                 auto e = ifToEl.find(i);
-                if (e != ifToEl.end() && e->second >= 0) falseTarget = e->second + 1;
+                if (e != ifToEl.end() && e->second >= 0) {
+                    falseTarget = e->second + 1;
+                }
                 else {
                     auto f = ifToIe.find(i);
-                    if (f != ifToIe.end()) falseTarget = f->second;
+                    if (f != ifToIe.end()) {
+                        falseTarget = f->second;
+                    }
                 }
-                if (falseTarget >= 0 && falseTarget < static_cast<int>(quads.size())) leaders.insert(falseTarget);
+                if (falseTarget >= 0 && falseTarget < static_cast<int>(quads.size())) {
+                    leaders.insert(falseTarget);
+                }
             } else if (q.op == "do") {
-                if (i + 1 < static_cast<int>(quads.size())) leaders.insert(i + 1);
+                if (i + 1 < static_cast<int>(quads.size())) {
+                    leaders.insert(i + 1);
+                }
                 auto f = doToWe.find(i);
                 if (f != doToWe.end()) {
                     int falseTarget = f->second + 1;
-                    if (falseTarget < static_cast<int>(quads.size())) leaders.insert(falseTarget);
+                    if (falseTarget < static_cast<int>(quads.size())) {
+                        leaders.insert(falseTarget);
+                    }
                 }
             } else if (q.op == "el") {
                 for (const auto& pair : ifToEl) {
                     if (pair.second == i) {
                         auto ie = ifToIe.find(pair.first);
-                        if (ie != ifToIe.end()) leaders.insert(ie->second);
+                        if (ie != ifToIe.end()) {
+                            leaders.insert(ie->second);
+                        }
                         break;
                     }
                 }
@@ -1132,9 +1152,13 @@ void MainWindow::fillQuadrupleOptimizeTable(const CompileResult& result) {
                 auto w = weToWh.find(i);
                 if (w != weToWh.end()) {
                     int condEntry = w->second + 1;
-                    if (condEntry < static_cast<int>(quads.size())) leaders.insert(condEntry);
+                    if (condEntry < static_cast<int>(quads.size())) {
+                        leaders.insert(condEntry);
+                    }
                 }
-                if (i + 1 < static_cast<int>(quads.size())) leaders.insert(i + 1);
+                if (i + 1 < static_cast<int>(quads.size())) {
+                    leaders.insert(i + 1);
+                }
             }
         }
 

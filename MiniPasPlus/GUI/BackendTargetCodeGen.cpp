@@ -75,16 +75,46 @@ bool isVariableOperand(const std::string& s)
 std::string opToTarget(const std::string& op)
 {
     // 把四元式运算符转换成展示用目标指令名。
-    if (op == "+") return "ADD";
-    if (op == "-") return "SUB";
-    if (op == "*") return "MUL";
-    if (op == "/") return "DIV";
-    if (op == "<") return "LT";
-    if (op == ">") return "GT";
-    if (op == "=") return "EQ";
-    if (op == "!=") return "NE";
-    if (op == "<=") return "LE";
-    if (op == ">=") return "GE";
+    if (op == "+")
+    {
+        return "ADD";
+    }
+    if (op == "-")
+    {
+        return "SUB";
+    }
+    if (op == "*")
+    {
+        return "MUL";
+    }
+    if (op == "/")
+    {
+        return "DIV";
+    }
+    if (op == "<")
+    {
+        return "LT";
+    }
+    if (op == ">")
+    {
+        return "GT";
+    }
+    if (op == "=")
+    {
+        return "EQ";
+    }
+    if (op == "!=")
+    {
+        return "NE";
+    }
+    if (op == "<=")
+    {
+        return "LE";
+    }
+    if (op == ">=")
+    {
+        return "GE";
+    }
     return "";
 }
 
@@ -130,9 +160,18 @@ std::vector<QuadLiveInfo> buildLiveness(
         for (int i = block.start; i <= block.end; ++i)
         {
             const Quadruple& q = quads[i];
-            if (isVariableOperand(q.arg1) && symLive.find(q.arg1) == symLive.end()) symLive[q.arg1] = !isTemp(q.arg1);
-            if (isVariableOperand(q.arg2) && symLive.find(q.arg2) == symLive.end()) symLive[q.arg2] = !isTemp(q.arg2);
-            if (isVariableOperand(q.result) && symLive.find(q.result) == symLive.end()) symLive[q.result] = !isTemp(q.result);
+            if (isVariableOperand(q.arg1) && symLive.find(q.arg1) == symLive.end())
+            {
+                symLive[q.arg1] = !isTemp(q.arg1);
+            }
+            if (isVariableOperand(q.arg2) && symLive.find(q.arg2) == symLive.end())
+            {
+                symLive[q.arg2] = !isTemp(q.arg2);
+            }
+            if (isVariableOperand(q.result) && symLive.find(q.result) == symLive.end())
+            {
+                symLive[q.result] = !isTemp(q.result);
+            }
         }
 
         for (int i = block.end; i >= block.start; --i)

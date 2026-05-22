@@ -6,7 +6,10 @@
 #include <set>
 
 // 构造 Parser，接收 Lexer 输出的 Token 序列作为输入。
-Parser::Parser(const std::vector<Token>& tokens) : tokens_(tokens) {}
+Parser::Parser(const std::vector<Token>& tokens)
+    : tokens_(tokens)
+{
+}
 
 // 语法/语义分析总入口：驱动递归下降并汇总阶段结果。
 CompileResult Parser::parse() {
@@ -25,17 +28,26 @@ CompileResult Parser::parse() {
 }
 
 // 查看当前 Token（不前进）。
-const Token& Parser::peek() const { return tokens_[current_]; }
+const Token& Parser::peek() const
+{
+    return tokens_[current_];
+}
 
 // 判断当前 Token 是否匹配期望类型和可选词素。
 bool Parser::check(TokenType type, const std::string& text) const {
-    if (peek().type != type) return false;
+    if (peek().type != type)
+    {
+        return false;
+    }
     return text.empty() || peek().lexeme == text;
 }
 
 // 尝试匹配：成功则前进一个 Token，失败不报错。
 bool Parser::match(TokenType type, const std::string& text) {
-    if (!check(type, text)) return false;
+    if (!check(type, text))
+    {
+        return false;
+    }
     ++current_; // 前进到下一个 Token
     return true;
 }
@@ -57,7 +69,10 @@ void Parser::enterRule(const std::string& rule) {
 
 // 离开当前语法规则，回退递归深度。
 void Parser::leaveRule() {
-    if (traceDepth_ > 0) --traceDepth_;
+    if (traceDepth_ > 0)
+    {
+        --traceDepth_;
+    }
 }
 
 // 记录语义动作日志。
@@ -161,7 +176,10 @@ void Parser::parseFunctionDecl() {
     Token name = consume(TokenType::Identifier, "", "function 后缺少函数名");
 
     consume(TokenType::Delimiter, "(", "函数名后缺少 (");
-    if (!check(TokenType::Delimiter, ")")) parseParamList(name.lexeme);
+    if (!check(TokenType::Delimiter, ")"))
+    {
+        parseParamList(name.lexeme);
+    }
     consume(TokenType::Delimiter, ")", "参数列表后缺少 )");
 
     consume(TokenType::Delimiter, ":", "函数返回类型前缺少 :");
@@ -179,7 +197,13 @@ void Parser::parseFunctionDecl() {
 
     // 参数个数从参数表统计，最后写入函数表。
     int paramCount = 0;
-    for (const auto& p : parameters_) if (p.functionName == name.lexeme) ++paramCount;
+    for (const auto& p : parameters_)
+    {
+        if (p.functionName == name.lexeme)
+        {
+            ++paramCount;
+        }
+    }
     functions_.push_back({name.lexeme, returnType, paramCount});
     leaveRule();
 }
@@ -201,7 +225,10 @@ void Parser::parseParamList(const std::string& functionName) {
             symbolTable_.add({name, type, "parameter of " + functionName, 0, 0}); // 写入符号表
         }
 
-        if (!match(TokenType::Delimiter, ";")) break;
+        if (!match(TokenType::Delimiter, ";"))
+        {
+            break;
+        }
     }
 }
 
@@ -229,8 +256,14 @@ void Parser::parseVarDeclPart(const std::string& scope) {
 
         for (const auto& name : names) {
             std::string kind = scope.empty() ? "variable" : "local variable of " + scope;
-            if (typeTable_.findRecord(type)) kind = "record " + kind;
-            if (typeTable_.findArray(type)) kind = "array " + kind;
+            if (typeTable_.findRecord(type))
+            {
+                kind = "record " + kind;
+            }
+            if (typeTable_.findArray(type))
+            {
+                kind = "array " + kind;
+            }
             symbolTable_.add({name, type, kind, 0, 0}); // 写入符号表
         }
     }
@@ -246,20 +279,42 @@ void Parser::parseCompoundStmt() {
 
 // 解析语句序列（分号分隔）。
 void Parser::parseStmtList() {
-    if (check(TokenType::Keyword, "end")) return;
+    if (check(TokenType::Keyword, "end"))
+    {
+        return;
+    }
     parseStmt();
     while (match(TokenType::Delimiter, ";")) {
-        if (check(TokenType::Keyword, "end") || check(TokenType::Keyword, "else")) break;
+        if (check(TokenType::Keyword, "end") || check(TokenType::Keyword, "else"))
+        {
+            break;
+        }
         parseStmt();
     }
 }
 
 // 语句分发器：按首 Token 决定进入哪类语句解析。
 void Parser::parseStmt() {
-    if (check(TokenType::Keyword, "begin")) { parseCompoundStmt(); return; }
-    if (check(TokenType::Keyword, "if")) { parseIfStmt(); return; }
-    if (check(TokenType::Keyword, "while")) { parseWhileStmt(); return; }
-    if (check(TokenType::Identifier) && tokens_[current_ + 1].lexeme == "(") { parseCallStmt(); return; }
+    if (check(TokenType::Keyword, "begin"))
+    {
+        parseCompoundStmt();
+        return;
+    }
+    if (check(TokenType::Keyword, "if"))
+    {
+        parseIfStmt();
+        return;
+    }
+    if (check(TokenType::Keyword, "while"))
+    {
+        parseWhileStmt();
+        return;
+    }
+    if (check(TokenType::Identifier) && tokens_[current_ + 1].lexeme == "(")
+    {
+        parseCallStmt();
+        return;
+    }
     parseAssignStmt();
 }
 
@@ -277,7 +332,10 @@ void Parser::parseAssignStmt() {
         std::string baseName = left.substr(0, left.find('['));
         const Symbol& arraySymbol = requireVariableDeclared(baseName);
         const ArrayType* arrayType = typeTable_.findArray(arraySymbol.typeName);
-        if (arrayType != nullptr) leftType = arrayType->elementType;
+        if (arrayType != nullptr)
+        {
+            leftType = arrayType->elementType;
+        }
     } else if (left.find('.') != std::string::npos) {
         std::string baseName = left.substr(0, left.find('.'));
         std::string fieldName = left.substr(left.find('.') + 1);
@@ -412,7 +470,10 @@ Parser::ExprResult Parser::parseFactor() {
         Token name = consume(TokenType::Identifier, "", "缺少标识符");
 
         // 标识符后面接括号时，它是函数调用。
-        if (check(TokenType::Delimiter, "(")) return parseFunctionCall(name);
+        if (check(TokenType::Delimiter, "("))
+        {
+            return parseFunctionCall(name);
+        }
 
         std::string place = name.lexeme;
         std::string type = requireVariableDeclared(name.lexeme).typeName;
@@ -455,12 +516,19 @@ Parser::ExprResult Parser::parseFunctionCall(const Token& functionName) {
     std::vector<ExprResult> args;
     if (!check(TokenType::Delimiter, ")")) {
         args.push_back(parseExpression());
-        while (match(TokenType::Delimiter, ",")) args.push_back(parseExpression());
+        while (match(TokenType::Delimiter, ","))
+        {
+            args.push_back(parseExpression());
+        }
     }
     consume(TokenType::Delimiter, ")", "函数调用缺少 )");
 
     checkArgumentList(functionName.lexeme, args);
-    for (const auto& arg : args) emit("param", arg.place, "vf", "_");
+    for (const auto& arg : args)
+    {
+        // const auto&：只读引用，避免拷贝参数表达式结果。
+        emit("param", arg.place, "vf", "_");
+    }
 
     std::string result = newTemp(functionSymbol.typeName);
     emit("call", functionName.lexeme, std::to_string(args.size()), result);
@@ -520,8 +588,14 @@ const Symbol& Parser::requireVariableDeclared(const std::string& name) const {
 
 // 赋值兼容性判断（仅支持同类型或 integer 到 real）。
 bool Parser::canAssign(const std::string& targetType, const std::string& sourceType) const {
-    if (targetType == sourceType) return true;
-    if (targetType == "real" && sourceType == "integer") return true;
+    if (targetType == sourceType)
+    {
+        return true;
+    }
+    if (targetType == "real" && sourceType == "integer")
+    {
+        return true;
+    }
     return false;
 }
 

@@ -8,40 +8,56 @@
 // 当前实现：复制传播、代数化简、公共子表达式复用。
 std::vector<Quadruple> BackendOptimization::optimizeByBasicBlocks(
     const std::vector<Quadruple>& quads,
-    const std::vector<BasicBlock>& blocks) {
+    const std::vector<BasicBlock>& blocks)
+{
 
     std::vector<Quadruple> output;
 
-    for (const auto& block : blocks) {
+    for (const auto& block : blocks)
+    {
         // alias 表示“谁可以替换成谁”。
         std::map<std::string, std::string> alias;
 
         // exprValue 记录已经算过的表达式。
         std::map<std::string, std::string> exprValue;
 
-        for (int i = block.start; i <= block.end && i < static_cast<int>(quads.size()); ++i) {
+        for (int i = block.start; i <= block.end && i < static_cast<int>(quads.size()); ++i)
+        {
             Quadruple q = quads[i];
 
-            if (q.op == ":=") {
-                if (alias.count(q.arg1)) q.arg1 = alias[q.arg1];
+            if (q.op == ":=")
+            {
+                if (alias.count(q.arg1))
+                {
+                    q.arg1 = alias[q.arg1];
+                }
                 alias[q.result] = q.arg1;
                 output.push_back(q);
                 continue;
             }
 
-            if (q.op == "+" || q.op == "-" || q.op == "*" || q.op == "/") {
-                if (alias.count(q.arg1)) q.arg1 = alias[q.arg1];
-                if (alias.count(q.arg2)) q.arg2 = alias[q.arg2];
+            if (q.op == "+" || q.op == "-" || q.op == "*" || q.op == "/")
+            {
+                if (alias.count(q.arg1))
+                {
+                    q.arg1 = alias[q.arg1];
+                }
+                if (alias.count(q.arg2))
+                {
+                    q.arg2 = alias[q.arg2];
+                }
 
                 // 代数化简：x + 0 = x，x * 1 = x。
-                if ((q.op == "+" && q.arg2 == "0") || (q.op == "*" && q.arg2 == "1")) {
+                if ((q.op == "+" && q.arg2 == "0") || (q.op == "*" && q.arg2 == "1"))
+                {
                     output.push_back({":=", q.arg1, "_", q.result});
                     continue;
                 }
 
                 // 公共子表达式：相同 op/arg1/arg2 只算一次。
                 std::string key = q.op + "|" + q.arg1 + "|" + q.arg2;
-                if (exprValue.count(key)) {
+                if (exprValue.count(key))
+                {
                     output.push_back({":=", exprValue[key], "_", q.result});
                     continue;
                 }
