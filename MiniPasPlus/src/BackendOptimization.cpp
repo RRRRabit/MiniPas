@@ -4,22 +4,25 @@
 #include <map>
 #include <set>
 
+using std::map;
+using std::string;
+using std::vector;
+
 // 以基本块为单位执行局部优化，并返回新的四元式序列。
 // 当前实现：复制传播、代数化简、公共子表达式复用。
-std::vector<Quadruple> BackendOptimization::optimizeByBasicBlocks(
-    const std::vector<Quadruple>& quads,
-    const std::vector<BasicBlock>& blocks)
+vector<Quadruple> BackendOptimization::optimizeByBasicBlocks(
+    const vector<Quadruple> &quads,
+    const vector<BasicBlock> &blocks)
 {
+    vector<Quadruple> output;
 
-    std::vector<Quadruple> output;
-
-    for (const auto& block : blocks)
+    for (const auto &block : blocks)
     {
         // alias 表示“谁可以替换成谁”。
-        std::map<std::string, std::string> alias;
+        map<string, string> alias;
 
         // exprValue 记录已经算过的表达式。
-        std::map<std::string, std::string> exprValue;
+        map<string, string> exprValue;
 
         for (int i = block.start; i <= block.end && i < static_cast<int>(quads.size()); ++i)
         {
@@ -55,7 +58,7 @@ std::vector<Quadruple> BackendOptimization::optimizeByBasicBlocks(
                 }
 
                 // 公共子表达式：相同 op/arg1/arg2 只算一次。
-                std::string key = q.op + "|" + q.arg1 + "|" + q.arg2;
+                string key = q.op + "|" + q.arg1 + "|" + q.arg2;
                 if (exprValue.count(key))
                 {
                     output.push_back({":=", exprValue[key], "_", q.result});
@@ -73,6 +76,3 @@ std::vector<Quadruple> BackendOptimization::optimizeByBasicBlocks(
 
     return output;
 }
-
-
-

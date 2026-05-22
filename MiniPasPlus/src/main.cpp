@@ -3,9 +3,13 @@
 #include "CompilerFacade.h"
 #include <iostream>
 
+using std::cout;
+using std::string;
+
 // main 只负责组装输入、调用总控并打印结果统计。
-int main() {
-    std::string source =
+int main()
+{
+    string source =
         "program demo\n"
         "type person = record age: integer; end;\n"
         "nums = array[1..5] of integer;\n"
@@ -26,24 +30,20 @@ int main() {
     CompilerFacade compiler; // 创建编译总控对象
     CompileResult result = compiler.compileAndRun(source);
 
-    if (!result.success) {
-        std::cout << "编译失败: " << result.errorMessage << "\n";
+    if (!result.success)
+    {
+        cout << "编译失败: " << result.errorMessage << "\n";
         return 0;
     }
 
-    std::cout << "Token 数量: " << result.tokens.size() << "\n";
-    std::cout << "符号数量: " << result.symbols.size() << "\n";
-    std::cout << "record 类型数量: " << result.recordTypes.size() << "\n";
-    std::cout << "array 类型数量: " << result.arrayTypes.size() << "\n";
-    std::cout << "函数数量: " << result.functionTable.size() << "\n";
-    std::cout << "四元式数量: " << result.quadruples.size() << "\n";
-    std::cout << "优化后四元式数量: " << result.optimizedQuadruples.size() << "\n";
-    std::cout << "递归分析节点: " << result.parserTrace.size() << "\n";
+    cout << "Token 数量: " << result.tokens.size() << "\n";
+    cout << "符号数量: " << result.symbols.size() << "\n";
+    cout << "record 类型数量: " << result.recordTypes.size() << "\n";
+    cout << "array 类型数量: " << result.arrayTypes.size() << "\n";
+    cout << "函数数量: " << result.functionTable.size() << "\n";
+    cout << "四元式数量: " << result.quadruples.size() << "\n";
+    cout << "优化后四元式数量: " << result.optimizedQuadruples.size() << "\n";
+    cout << "递归分析节点: " << result.parserTrace.size() << "\n";
 
     return 0;
 }
-
-
-
-
-

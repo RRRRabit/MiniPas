@@ -6,6 +6,9 @@
 #include <vector>
 #include "Token.h"
 
+using std::string;
+using std::vector;
+
 // Lexer 负责词法分析。
 //
 // - Token 表：tokenize() 扫描源代码时生成。
@@ -13,39 +16,40 @@
 // - 界符表：Lexer 构造函数里一次性建立，内容固定。
 // - 标识符表：扫描到变量名/函数名/类型名时，由 rememberIdentifier 加入。
 // - 常量表：扫描到数字或字符常量时，由 rememberConstant 加入。
-class Lexer {
+class Lexer
+{
 public:
     // 构造词法分析器并保存待扫描的源代码。
-    explicit Lexer(const std::string& source);
+    explicit Lexer(const string &source);
 
     // 扫描完整源代码并返回 Token 序列。
-    std::vector<Token> tokenize();
+    vector<Token> tokenize();
 
     // 返回扫描过程中收集到的标识符表。
-    const std::vector<std::string>& identifierTable() const;
+    const vector<string> &identifierTable() const;
 
     // 返回扫描过程中收集到的常量表。
-    const std::vector<ConstantEntry>& constantTable() const;
+    const vector<ConstantEntry> &constantTable() const;
 
     // 返回固定关键字表。
-    const std::vector<KeywordEntry>& keywordTable() const;
+    const vector<KeywordEntry> &keywordTable() const;
 
     // 返回固定界符表。
-    const std::vector<DelimiterEntry>& delimiterTable() const;
+    const vector<DelimiterEntry> &delimiterTable() const;
 
 private:
-    std::string source_;
+    string source_;
     int pos_ = 0;
     int line_ = 1;
     int column_ = 1;
 
-    std::vector<std::string> identifiers_;
+    vector<string> identifiers_;
 
-    std::vector<ConstantEntry> constants_;
+    vector<ConstantEntry> constants_;
 
-    std::vector<KeywordEntry> keywords_;
+    vector<KeywordEntry> keywords_;
 
-    std::vector<DelimiterEntry> delimiters_;
+    vector<DelimiterEntry> delimiters_;
 
     // 查看当前字符但不移动扫描位置。
     char peek() const;
@@ -74,11 +78,8 @@ private:
     Token readOperatorOrDelimiter();
 
     // 把标识符加入标识符表。
-    void rememberIdentifier(const std::string& name);
+    void rememberIdentifier(const string &name);
 
     // 把常量文本和类型加入常量表。
-    void rememberConstant(const std::string& text, const std::string& type);
+    void rememberConstant(const string &text, const string &type);
 };
-
-
-

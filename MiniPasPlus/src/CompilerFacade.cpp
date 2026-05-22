@@ -8,10 +8,15 @@
 #include "RuntimeResultDemo.h"
 #include <exception>
 
-CompileResult CompilerFacade::compileAndRun(const std::string& sourceCode) {
+using std::exception;
+using std::string;
+
+CompileResult CompilerFacade::compileAndRun(const string &sourceCode)
+{
     CompileResult result;
 
-    try {
+    try
+    {
         Lexer lexer(sourceCode);
         result.tokens = lexer.tokenize(); // 源码先切成 Token，Parser 后面只看 Token。
 
@@ -21,7 +26,8 @@ CompileResult CompilerFacade::compileAndRun(const std::string& sourceCode) {
         result.identifierTable = lexer.identifierTable();
 
         result.constantTable.clear();
-        for (const auto& entry : lexer.constantTable()) {
+        for (const auto &entry : lexer.constantTable())
+        {
             result.constantTable.push_back(entry.text);
         }
         result.constantEntries = lexer.constantTable();
@@ -54,7 +60,9 @@ CompileResult CompilerFacade::compileAndRun(const std::string& sourceCode) {
         result.runtimeValues = runtimeResult.makePlaceholder(result.symbols);
 
         result.success = true;
-    } catch (const std::exception& e) {
+    }
+    catch (const exception &e)
+    {
         result.success = false;
         result.errorMessage = e.what();
     }
@@ -63,12 +71,7 @@ CompileResult CompilerFacade::compileAndRun(const std::string& sourceCode) {
 }
 
 // 兼容旧接口：保持 compile 可用，内部直接复用 compileAndRun。
-CompileResult CompilerFacade::compile(const std::string& sourceCode) {
+CompileResult CompilerFacade::compile(const string &sourceCode)
+{
     return compileAndRun(sourceCode);
 }
-
-
-
-
-
-
