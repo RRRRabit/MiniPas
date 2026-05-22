@@ -5,8 +5,11 @@
 #include <algorithm>
 #include <set>
 
+using std::string;
+using std::vector;
+
 // 构造 Parser，接收 Lexer 输出的 Token 序列作为输入。
-Parser::Parser(const std::vector<Token>& tokens)
+Parser::Parser(const vector<Token>& tokens)
     : tokens_(tokens)
 {
 }
@@ -34,7 +37,7 @@ const Token& Parser::peek() const
 }
 
 // 判断当前 Token 是否匹配期望类型和可选词素。
-bool Parser::check(TokenType type, const std::string& text) const {
+bool Parser::check(TokenType type, const string& text) const {
     if (peek().type != type)
     {
         return false;
@@ -43,7 +46,7 @@ bool Parser::check(TokenType type, const std::string& text) const {
 }
 
 // 尝试匹配：成功则前进一个 Token，失败不报错。
-bool Parser::match(TokenType type, const std::string& text) {
+bool Parser::match(TokenType type, const string& text) {
     if (!check(type, text))
     {
         return false;
@@ -53,7 +56,7 @@ bool Parser::match(TokenType type, const std::string& text) {
 }
 
 // 强制匹配：失败立即抛错，用于文法中的“必须出现”符号。
-Token Parser::consume(TokenType type, const std::string& text, const std::string& message) {
+Token Parser::consume(TokenType type, const string& text, const string& message) {
     if (check(type, text)) {
         Token token = tokens_[current_++];
         result_.parserSteps.push_back({"TOKEN", "匹配 Token: " + token.lexeme});
@@ -63,7 +66,7 @@ Token Parser::consume(TokenType type, const std::string& text, const std::string
 }
 
 // 进入某条语法规则，记录递归深度和调用轨迹。
-void Parser::enterRule(const std::string& rule) {
+void Parser::enterRule(const string& rule) {
     result_.parserTrace.push_back({traceDepth_++, rule, "进入 " + rule});
 }
 
@@ -76,7 +79,7 @@ void Parser::leaveRule() {
 }
 
 // 记录语义动作日志。
-void Parser::logAction(const std::string& rule, const std::string& text) {
+void Parser::logAction(const string& rule, const string& text) {
     result_.parserActions.push_back({rule, text});
 }
 

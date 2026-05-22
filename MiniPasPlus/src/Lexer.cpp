@@ -4,8 +4,12 @@
 #include <cctype>
 #include <set>
 
+using std::set;
+using std::string;
+using std::vector;
+
 // 构造词法分析器并初始化关键字表、界符表。
-Lexer::Lexer(const std::string& source)
+Lexer::Lexer(const string& source)
     : source_(source)
 {
     // 关键字表是固定表。
@@ -81,7 +85,7 @@ Token Lexer::readIdentifierOrKeyword() {
         text += advance();
     }
 
-    static std::set<std::string> keywordSet = {
+    static set<string> keywordSet = {
         "program", "type", "var", "function", "begin", "end", "if", "then",
         "else", "while", "do", "array", "record", "of", "integer", "real", "char", "boolean"
     };
@@ -133,10 +137,10 @@ Token Lexer::readOperatorOrDelimiter() {
 }
 
 // 词法分析总入口：把整段文本扫描为 Token 序列。
-std::vector<Token> Lexer::tokenize() {
+vector<Token> Lexer::tokenize() {
     // Token 表就是在这个循环里生成的。
     // 每次识别出一个单词/数字/符号，就 push_back 到 tokens。
-    std::vector<Token> tokens;
+    vector<Token> tokens;
     while (!isAtEnd()) {
         // 每次循环都尝试识别“下一个 Token”。
         // 这里的扫描顺序固定：先跳过空白/注释，再看是字母、数字还是符号。
@@ -163,7 +167,7 @@ std::vector<Token> Lexer::tokenize() {
 }
 
 // 把标识符加入 I 表（去重）。
-void Lexer::rememberIdentifier(const std::string& name) {
+void Lexer::rememberIdentifier(const string& name) {
     // 标识符表不重复存同一个名字。
     for (const auto& old : identifiers_) {
         if (old == name)
@@ -175,31 +179,31 @@ void Lexer::rememberIdentifier(const std::string& name) {
 }
 
 // 把常量加入 C 表。
-void Lexer::rememberConstant(const std::string& text, const std::string& type) {
+void Lexer::rememberConstant(const string& text, const string& type) {
     // 常量表保存常量文本和类型。
     constants_.push_back({text, type});
 }
 
 // 返回扫描过程中收集到的标识符表。
-const std::vector<std::string>& Lexer::identifierTable() const
+const vector<string>& Lexer::identifierTable() const
 {
     return identifiers_;
 }
 
 // 返回扫描过程中收集到的常量表。
-const std::vector<ConstantEntry>& Lexer::constantTable() const
+const vector<ConstantEntry>& Lexer::constantTable() const
 {
     return constants_;
 }
 
 // 返回关键字表（固定表）。
-const std::vector<KeywordEntry>& Lexer::keywordTable() const
+const vector<KeywordEntry>& Lexer::keywordTable() const
 {
     return keywords_;
 }
 
 // 返回界符表（固定表）。
-const std::vector<DelimiterEntry>& Lexer::delimiterTable() const
+const vector<DelimiterEntry>& Lexer::delimiterTable() const
 {
     return delimiters_;
 }
