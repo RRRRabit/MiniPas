@@ -1,152 +1,158 @@
-#ifndef MINIPASPLUS_PARSER_H
-#define MINIPASPLUS_PARSER_H
+// 文件说明：声明递归下降语法/语义分析器接口。负责生成符号表、类型表、四元式及基本块。
 
-#include "CompileResult.h"
-#include <map>
+#pragma once
+
 #include <string>
 #include <vector>
+#include "CompileResult.h"
+#include "SymbolTable.h"
+#include "TypeTable.h"
 
-// 语法分析器：按照 MiniPas+ 文法进行递归下降分析。
+// Parser 是递归下降语法分析器。
 //
-// “递归下降”可以理解成：
-// 文法里每一个非终结符，都写成一个 parseXXX 函数。
-// 例如 PROGRAM 规则对应 parseProgram，表达式规则对应 parseExpression。
+// 每个 parseXXX 函数对应一个语法结构。
 class Parser {
 public:
-    explicit Parser(std::vector<Token> tokens);
+    // 构造语法分析器并保存 Lexer 生成的 Token 序列。
+    explicit Parser(const std::vector<Token>& tokens);
 
-    // 分析 Token 序列，并生成符号表、类型表、函数表、四元式、基本块等结果。
+    // 启动递归下降分析并返回汇总结果。
     CompileResult parse();
 
 private:
-    // 表达式分析结果。
-    //
-    // place 表示表达式的值“存在哪里”：
-    // - 变量名：a
-    // - 常量：1
-    // - 临时变量：t1
-    //
-    // type 表示表达式类型：
-    // - integer
-    // - real
-    // - char
-    // - boolean
     struct ExprResult {
         std::string place;
         std::string type;
     };
 
-    // Token 序列和当前位置。
-    // current_ 指向“下一个准备读取”的 Token。
     std::vector<Token> tokens_;
-    std::size_t current_;
+    int current_ = 0;
+    int tempIndex_ = 0;
 
-    // result_ 是 Parser 阶段自己的结果容器。
-    // parse() 结束后会把它返回给 CompilerFacade。
     CompileResult result_;
-
-    // 语义分析需要的表：
-    // symbolTable_ 记录变量、函数、类型名等标识符。
-    // typeTable_ 记录 record / array 类型。
     SymbolTable symbolTable_;
     TypeTable typeTable_;
+    std::vector<FunctionInfo> functions_;
+    std::vector<ParameterInfo> parameters_;
+    int traceDepth_ = 0;
 
-    // 临时变量和地址分配用的计数器。
-    // tempIndex_ 用来生成 t1、t2、t3。
-    // nextAddress_ 用来给全局变量/临时变量分配相对地址。
-    int tempIndex_;
-    int nextAddress_;
+    // 查看当前 Token 但不前进。
+    const Token& peek() const;
 
-    // 函数内部参数、局部变量和临时变量的偏移统计。
-    int currentParamOffset_;
-    int currentLocalOffset_;
-    int currentFunctionTempSize_;
+    // 判断当前 Token 是否符合期望类型和文本。
+    bool check(TokenType type, const std::string& text = "") const;
 
-    // 当前程序名和当前正在分析的函数名。
-    // 如果 currentFunctionName_ 为空，说明正在分析主程序。
-    std::string programName_;
-    std::string currentFunctionName_;
+    // 当前 Token 符合要求时前进一个位置。
+    bool match(TokenType type, const std::string& text = "");
 
-    // 函数表和参数表。
-    // 函数调用检查、VM 指令生成都会用到它们。
-    std::vector<FunctionInfo> functionInfos_;
-    std::vector<ParameterInfo> parameterInfos_;
+    // 强制读取指定 Token，不符合时报告错误。
+    Token consume(TokenType type, const std::string& text, const std::string& message);
 
-    // 递归分析过程展示用状态。
-    // traceDepth_ 表示当前 parseXXX 调用深度，只影响 GUI 调用树缩进。
-    int traceDepth_;
+    // 记录进入一条语法规则。
+    void enterRule(const std::string& rule);
 
-    // TraceScope 是一个小型 RAII 工具：
-    // 构造时记录“进入某个语法子程序”，析构时自动降低深度。
-    // 这样 parseXXX 函数中途 return 或抛异常时，深度也能恢复。
-    struct TraceScope {
-        Parser& parser;
-        std::string rule;
-        TraceScope(Parser& parser, std::string rule);
-        ~TraceScope();
-    };
+    // 记录离开当前语法规则。
+    void leaveRule();
 
-    // 下面三个函数只记录 GUI 展示日志，不影响真正的语法分析判断。
-    void traceEnter(const std::string& rule);
-    void traceExit();
-    void logParserStep(const std::string& rule, const std::string& text);
-    void logParserAction(const std::string& rule, const std::string& text);
+    // 记录语义动作文本。
+    void logAction(const std::string& rule, const std::string& text);
 
-    // 每个 parse 函数对应一个非终结符。
+    // 解析整个程序结构。
     void parseProgram();
-    void parseDeclPart();
+
+    // 解析 type 声明区。
     void parseTypeDeclPart();
-    void parseTypeDeclList();
-    void parseTypeDecl();
-    void parseTypeSpec(const std::string& typeName);
+
+    // 解析 record 类型声明。
     void parseRecordTypeDecl(const std::string& typeName);
+
+    // 解析 array 类型声明。
     void parseArrayTypeDecl(const std::string& typeName);
-    std::vector<FieldInfo> parseFieldDeclList();
-    FieldInfo parseFieldDecl();
-    std::string parseBasicType();
+
+    // 解析函数声明区。
     void parseFunctionDeclPart();
+
+    // 解析单个函数声明。
     void parseFunctionDecl();
+
+    // 解析函数参数列表。
     void parseParamList(const std::string& functionName);
-    void parseParam(const std::string& functionName);
-    void parseVarDeclPart(bool required = true, const std::string& scope = "");
-    void parseVarDeclList(const std::string& scope = "");
-    void parseVarDecl(const std::string& scope = "");
-    std::vector<std::string> parseIdList();
-    std::string parseTypeName();
+
+    // 解析变量声明区。
+    void parseVarDeclPart(const std::string& scope = "");
+
+    // 解析 begin 到 end 包围的复合语句。
     void parseCompoundStmt();
+
+    // 解析一组由分号分隔的语句。
     void parseStmtList();
+
+    // 根据当前 Token 分派到具体语句解析函数。
     void parseStmt();
+
+    // 解析赋值语句。
     void parseAssignStmt();
+
+    // 解析函数调用语句。
     void parseCallStmt();
-    void parseWhileStmt();
+
+    // 解析 if 语句。
     void parseIfStmt();
-    ExprResult parseCondition();
+
+    // 解析 while 语句。
+    void parseWhileStmt();
+
+    // 解析赋值号左侧的变量、数组元素或记录字段。
     std::string parseLeftValue();
-    ExprResult parseFunctionCall(const Token& functionToken);
+
+    // 解析关系条件表达式。
+    ExprResult parseCondition();
+
+    // 解析加减层表达式。
     ExprResult parseExpression();
+
+    // 解析乘除层表达式。
     ExprResult parseTerm();
+
+    // 解析表达式中的最小组成部分。
     ExprResult parseFactor();
 
-    const Token& peek() const;
-    const Token& previous() const;
-    bool isAtEnd() const;
-    bool check(TokenType type, const std::string& lexeme = "") const;
-    bool match(TokenType type, const std::string& lexeme = "");
-    Token consume(TokenType type, const std::string& lexeme, const std::string& reason);
-    Token consumeIdentifier(const std::string& reason);
-    void errorAtCurrent(const std::string& reason) const;
-    void errorAtToken(const Token& token, const std::string& reason) const;
-    bool isBasicTypeToken() const;
-    bool isStatementStart() const;
-    void checkVariableDeclared(const Token& nameToken) const;
-    void checkLeftValue(const Token& baseToken, const Token* fieldToken) const;
-    std::string resolveArrayElementType(const Token& baseToken, const ExprResult& indexExpr) const;
-    std::string resolveLValueType(const std::string& leftValue) const;
-    std::string mergeNumericType(const std::string& leftType, const std::string& rightType, const Token& opToken) const;
-    bool canAssign(const std::string& targetType, const std::string& sourceType) const;
-    std::string newTemp(const std::string& typeName);
-    void emit(const std::string& op, const std::string& arg1, const std::string& arg2, const std::string& result);
+    // 解析函数调用表达式并返回调用结果位置。
+    ExprResult parseFunctionCall(const Token& functionName);
+
+    // 解析基础类型名或自定义类型名。
+    std::string parseTypeName();
+
+    // 创建一个新的临时变量名。
+    std::string newTemp(const std::string& type);
+
+    // 生成一条四元式。
+    void emit(const std::string& op, const std::string& a, const std::string& b, const std::string& r);
+
+    // 根据控制流边界划分基本块。
     void buildBasicBlocks();
+
+    // 下面这些函数专门负责语义检查。
+    // 学生讲到“变量未声明、赋值类型不兼容、数组下标、record 字段、函数参数”时，
+    // 可以直接指向这些函数。
+    // 要求标识符已经声明。
+    const Symbol& requireVariableDeclared(const std::string& name) const;
+
+    // 判断赋值时源类型能否放入目标类型。
+    bool canAssign(const std::string& targetType, const std::string& sourceType) const;
+
+    // 检查数组下标并返回数组元素类型。
+    std::string checkArrayIndexAndGetElementType(const std::string& arrayName, const ExprResult& index) const;
+
+    // 检查记录字段并返回字段类型。
+    std::string checkRecordFieldAndGetType(const std::string& recordVarName, const std::string& fieldName) const;
+
+    // 查找某个函数的全部形参。
+    std::vector<ParameterInfo> findFunctionParams(const std::string& functionName) const;
+
+    // 检查函数调用实参和形参是否匹配。
+    void checkArgumentList(const std::string& functionName, const std::vector<ExprResult>& args) const;
 };
 
-#endif
+
+

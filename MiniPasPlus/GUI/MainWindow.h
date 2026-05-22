@@ -16,7 +16,7 @@
 // Qt Widgets 主窗口。
 //
 // 这个类主要负责“把编译结果显示出来”，不是编译器核心。
-// 你答辩时可以这样理解：
+// 可以这样理解：
 // - CompilerFacade 负责真正编译和运行；
 // - MainWindow 负责按钮、输入框、表格、颜色高亮；
 // - fillXXXTable 这一组函数只是把 CompileResult 里的数据搬到 Qt 表格里。
@@ -57,9 +57,6 @@ private:
     QTableWidget* quadrupleOptimizeTable_;
     QTableWidget* targetCodeTable_;
     QTableWidget* vmResultTable_;
-    QTableWidget* simplePrecedenceTable_;
-    QTableWidget* simplePrecedenceStepTable_;
-    QLabel* simplePrecedenceSummaryLabel_;
     QTreeWidget* parserTraceTreeWidget_;
     QTableWidget* parserStepTable_;
     QTableWidget* parserActionTable_;
@@ -105,7 +102,6 @@ private:
     void fillQuadrupleOptimizeTable(const CompileResult& result);
     void fillTargetCodeTable(const CompileResult& result);
     void fillVmResultTable(const CompileResult& result);
-    void fillSimplePrecedenceView(const CompileResult& result);
     void fillParserTraceView(const CompileResult& result);
 
     // 点击语法分析步骤时，高亮相关行，方便演示。

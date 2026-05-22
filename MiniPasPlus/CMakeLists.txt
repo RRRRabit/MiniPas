@@ -6,34 +6,34 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 答辩阅读版默认只构建命令行核心。
-# Qt 可视化代码集中放在 GUI/ 中，VM 执行器单独放在 VM/ 中，避免 src/include 里混入展示或运行器细节。
-option(BUILD_UI "Build Qt visualization app" OFF)
+# 工程说明：核心编译逻辑在 .qt/src 与 .qt/include，
+# Qt 可视化界面在 GUI/，VM 执行器在 VM/。
+option(BUILD_UI "Build Qt visualization app" ON)
 
 add_library(MiniPasCore STATIC
-    src/CompilerFacade.cpp
-    src/BackendOptimization.cpp
-    src/Lexer.cpp
-    src/Parser.cpp
-    src/ParserSupport.cpp
-    src/SymbolTable.cpp
-    src/TypeTable.cpp
-    src/Interpreter.cpp
+    .qt/src/CompilerFacade.cpp
+    .qt/src/BackendOptimization.cpp
+    .qt/src/Lexer.cpp
+    .qt/src/Parser.cpp
+    .qt/src/ParserSupport.cpp
+    .qt/src/SymbolTable.cpp
+    .qt/src/TypeTable.cpp
+    .qt/src/Interpreter.cpp
     VM/VirtualMachine.cpp
-    include/CompilerFacade.h
-    include/CompilerBackendStages.h
-    include/CompileResult.h
-    include/Token.h
-    include/Lexer.h
-    include/Parser.h
-    include/SymbolTable.h
-    include/TypeTable.h
-    include/Quadruple.h
-    include/Interpreter.h
+    .qt/include/CompilerFacade.h
+    .qt/include/CompilerBackendStages.h
+    .qt/include/CompileResult.h
+    .qt/include/Token.h
+    .qt/include/Lexer.h
+    .qt/include/Parser.h
+    .qt/include/SymbolTable.h
+    .qt/include/TypeTable.h
+    .qt/include/Quadruple.h
+    .qt/include/Interpreter.h
     VM/VirtualMachine.h
 )
 
-target_include_directories(MiniPasCore PUBLIC include VM)
+target_include_directories(MiniPasCore PUBLIC .qt/include VM)
 
 if(BUILD_UI)
     find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
@@ -43,21 +43,13 @@ if(BUILD_UI)
         GUI/main.cpp
         GUI/MainWindow.cpp
         GUI/CodeEditorWithLineNumber.cpp
-        GUI/SimplePrecedence.cpp
         GUI/BackendTargetCodeGen.cpp
         GUI/MainWindow.h
         GUI/CodeEditorWithLineNumber.h
-        GUI/SimplePrecedence.h
         GUI/TargetCodeTrace.h
     )
 
-    target_include_directories(MiniPasPlus PRIVATE include GUI)
+    target_include_directories(MiniPasPlus PRIVATE .qt/include GUI)
     target_link_libraries(MiniPasPlus PRIVATE MiniPasCore Qt${QT_VERSION_MAJOR}::Widgets)
 endif()
 
-add_executable(MiniPasCoreCLI
-    src/main_cli.cpp
-)
-
-target_include_directories(MiniPasCoreCLI PRIVATE include)
-target_link_libraries(MiniPasCoreCLI PRIVATE MiniPasCore)

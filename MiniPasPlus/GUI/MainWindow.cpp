@@ -1,7 +1,6 @@
 #include "MainWindow.h"
 #include "CompilerFacade.h"
 #include "CompilerBackendStages.h"
-#include "SimplePrecedence.h"
 #include "TargetCodeTrace.h"
 #include "Token.h"
 #include <QApplication>
@@ -157,9 +156,6 @@ MainWindow::MainWindow(QWidget* parent)
       quadrupleOptimizeTable_(nullptr),
       targetCodeTable_(nullptr),
       vmResultTable_(nullptr),
-      simplePrecedenceTable_(nullptr),
-      simplePrecedenceStepTable_(nullptr),
-      simplePrecedenceSummaryLabel_(nullptr),
       parserTraceTreeWidget_(nullptr),
       parserStepTable_(nullptr),
       parserActionTable_(nullptr),
@@ -403,46 +399,8 @@ void MainWindow::buildUi() {
     vmResultTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     tabWidget_->addTab(createTablePage("虚拟机执行后的最终变量值", vmResultTable_), "VM运行结果");
 
-    QWidget* simplePrecedencePage = nullptr;
-    QWidget* recursiveTracePage = nullptr;
-
-    {
-        auto* spPage = new QWidget(tabWidget_);
-        simplePrecedencePage = spPage;
-        auto* spLayout = new QVBoxLayout(spPage);
-        auto* spTitle = new QLabel("简单优先分析过程", spPage);
-        spTitle->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
-        spLayout->addWidget(spTitle);
-
-        simplePrecedenceTable_ = new QTableWidget(spPage);
-        setupTable(simplePrecedenceTable_, {"", "i", "+", "*", "(", ")", "#"});
-        spLayout->addWidget(new QLabel("简单优先分析表", spPage));
-        spLayout->addWidget(simplePrecedenceTable_);
-
-        auto* processTitle = new QLabel("简单分析过程", spPage);
-        processTitle->setStyleSheet("font-weight: 600; color: #334155; padding: 4px 0;");
-        spLayout->addWidget(processTitle);
-
-        simplePrecedenceSummaryLabel_ = new QLabel("表达式：等待编译", spPage);
-        simplePrecedenceSummaryLabel_->setStyleSheet("color: #334155;");
-        spLayout->addWidget(simplePrecedenceSummaryLabel_);
-
-        simplePrecedenceStepTable_ = new QTableWidget(spPage);
-        setupTable(simplePrecedenceStepTable_, {"步骤", "栈", "输入", "关系", "动作"});
-        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-        simplePrecedenceStepTable_->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-        spLayout->addWidget(new QLabel("分析步骤", spPage));
-        spLayout->addWidget(simplePrecedenceStepTable_);
-
-        tabWidget_->insertTab(3, spPage, "简单优先分析");
-    }
-
     {
         auto* tracePage = new QWidget(tabWidget_);
-        recursiveTracePage = tracePage;
         auto* traceLayout = new QVBoxLayout(tracePage);
         traceLayout->setContentsMargins(9, 9, 9, 9);
         traceLayout->setSpacing(6);
@@ -495,15 +453,6 @@ void MainWindow::buildUi() {
         });
     }
 
-    if (simplePrecedencePage != nullptr && recursiveTracePage != nullptr) {
-        int simpleIndex = tabWidget_->indexOf(simplePrecedencePage);
-        int traceIndex = tabWidget_->indexOf(recursiveTracePage);
-        if (simpleIndex >= 0 && traceIndex >= 0) {
-            tabWidget_->removeTab(simpleIndex);
-            traceIndex = tabWidget_->indexOf(recursiveTracePage);
-            tabWidget_->insertTab(traceIndex + 1, simplePrecedencePage, "简单优先分析");
-        }
-    }
 
     splitter->addWidget(leftPanel);
     splitter->addWidget(tabWidget_);
@@ -789,17 +738,7 @@ void MainWindow::clearOutput() {
     rawQuadrupleTable_->setRowCount(0);
     quadrupleOptimizeTable_->setRowCount(0);
     targetCodeTable_->setRowCount(0);
-    vmResultTable_->setRowCount(0);
-    if (simplePrecedenceTable_ != nullptr) {
-        simplePrecedenceTable_->setRowCount(0);
-    }
-    if (simplePrecedenceStepTable_ != nullptr) {
-        simplePrecedenceStepTable_->setRowCount(0);
-    }
-    if (simplePrecedenceSummaryLabel_ != nullptr) {
-        simplePrecedenceSummaryLabel_->setText("等待编译");
-    }
-    if (parserTraceTreeWidget_ != nullptr) {
+    vmResultTable_->setRowCount(0);    if (parserTraceTreeWidget_ != nullptr) {
         parserTraceTreeWidget_->clear();
     }
     if (parserStepTable_ != nullptr) {
@@ -825,7 +764,6 @@ void MainWindow::fillAllTables(const CompileResult& result) {
     fillQuadrupleOptimizeTable(result);
     fillTargetCodeTable(result);
     fillVmResultTable(result);
-    fillSimplePrecedenceView(result);
     fillParserTraceView(result);
 }
 
@@ -1342,87 +1280,6 @@ void MainWindow::fillVmResultTable(const CompileResult& result) {
         ++row;
     }
 }
-
-void MainWindow::fillSimplePrecedenceView(const CompileResult& result) {
-    std::vector<SimplePrecedenceResult> all = simple_precedence::analyzeAllExpressionsFromTokens(result.tokens);
-    if (all.empty()) {
-        all.push_back(simple_precedence::analyzeFromTokens(result.tokens));
-    }
-    const SimplePrecedenceResult& sp = all.front();
-
-    if (simplePrecedenceSummaryLabel_ != nullptr) {
-        if (!sp.enabled || all.empty()) {
-            simplePrecedenceSummaryLabel_->setText("表达式：未启用");
-        } else {
-            QStringList lines;
-            for (int i = 0; i < static_cast<int>(all.size()); ++i) {
-                const auto& one = all[i];
-                if (one.success) {
-                    lines << QString("表达式%1：%2    结果：成功")
-                                .arg(i + 1)
-                                .arg(QString::fromStdString(one.expressionText));
-                } else {
-                    lines << QString("表达式%1：%2    结果：失败    原因：%3")
-                                .arg(i + 1)
-                                .arg(QString::fromStdString(one.expressionText))
-                                .arg(QString::fromStdString(one.errorMessage));
-                }
-            }
-            simplePrecedenceSummaryLabel_->setText(lines.join("\n"));
-        }
-    }
-
-    if (simplePrecedenceTable_ != nullptr) {
-        int n = static_cast<int>(sp.symbols.size());
-        simplePrecedenceTable_->setColumnCount(n + 1);
-        QStringList headers;
-        headers << "";
-        for (const auto& t : sp.symbols) {
-            headers << QString::fromStdString(t);
-        }
-        simplePrecedenceTable_->setHorizontalHeaderLabels(headers);
-        simplePrecedenceTable_->setRowCount(n);
-
-        for (int i = 0; i < n; ++i) {
-            simplePrecedenceTable_->setItem(i, 0, new QTableWidgetItem(QString::fromStdString(sp.symbols[i])));
-            for (int j = 0; j < n; ++j) {
-                QString rel;
-                if (i < static_cast<int>(sp.table.size()) && j < static_cast<int>(sp.table[i].size())) {
-                    rel = QString::fromStdString(sp.table[i][j]);
-                }
-                simplePrecedenceTable_->setItem(i, j + 1, new QTableWidgetItem(rel));
-            }
-        }
-    }
-
-    if (simplePrecedenceStepTable_ != nullptr) {
-        int rows = 0;
-        for (const auto& one : all) {
-            rows += 1 + static_cast<int>(one.steps.size());
-        }
-        simplePrecedenceStepTable_->setRowCount(rows);
-        int row = 0;
-        for (int exprIndex = 0; exprIndex < static_cast<int>(all.size()); ++exprIndex) {
-            const auto& one = all[exprIndex];
-            simplePrecedenceStepTable_->setItem(row, 0, new QTableWidgetItem(QString("表达式%1").arg(exprIndex + 1)));
-            simplePrecedenceStepTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(one.expressionText)));
-            simplePrecedenceStepTable_->setItem(row, 2, new QTableWidgetItem(""));
-            simplePrecedenceStepTable_->setItem(row, 3, new QTableWidgetItem(""));
-            simplePrecedenceStepTable_->setItem(row, 4, new QTableWidgetItem(""));
-            ++row;
-            for (int i = 0; i < static_cast<int>(one.steps.size()); ++i) {
-                const auto& step = one.steps[i];
-                simplePrecedenceStepTable_->setItem(row, 0, new QTableWidgetItem(QString::number(i + 1)));
-                simplePrecedenceStepTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(step.stackText)));
-                simplePrecedenceStepTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(step.inputText)));
-                simplePrecedenceStepTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(step.relationText)));
-                simplePrecedenceStepTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(step.actionText)));
-                ++row;
-            }
-        }
-    }
-}
-
 void MainWindow::fillParserTraceView(const CompileResult& result) {
     // 递归分析过程页的数据来自 Parser 写入的展示日志：
     // parserTrace 负责左侧调用树；
@@ -1815,3 +1672,5 @@ void MainWindow::clearSourceHighlight() {
     highlightedLexeme_.clear();
     highlightedCellKey_.clear();
 }
+
+

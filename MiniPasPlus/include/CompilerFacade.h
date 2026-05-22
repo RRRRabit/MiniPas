@@ -1,25 +1,19 @@
-#ifndef MINIPASPLUS_COMPILERFACADE_H
-#define MINIPASPLUS_COMPILERFACADE_H
 
-#include "CompileResult.h"
+#pragma once
+
 #include <string>
+#include "CompileResult.h"
 
-// 编译器门面（Facade）。
-//
-// “门面”的意思是：外部代码不需要知道编译器内部有多少步骤，
-// 只要调用 compileAndRun(sourceCode)，就能一次性拿到完整结果。
-//
-// 如果没有这个类，GUI/CLI 就必须自己按顺序创建 Lexer、Parser、VirtualMachine，
-// 那样主界面代码会和编译核心耦合得很严重，不方便维护。
+// CompilerFacade 是总控类。
+// 它负责把词法、语法、语义、四元式、优化串成一条线。
 class CompilerFacade {
-    public:
-    // 完成整个编译运行流程：
-    // 1. 词法分析：源代码 -> Token；
-    // 2. 语法/语义分析：Token -> 符号表、类型表、四元式；
-    // 3. 后端优化：四元式 -> 优化后四元式；
-    // 4. 目标代码生成：四元式 -> VM 指令；
-    // 5. 虚拟机执行：VM 指令 -> 最终变量值。
+public:
+    // 与正式工程对齐：也使用 compileAndRun 作为统一入口名。
     CompileResult compileAndRun(const std::string& sourceCode);
+
+    // 兼容旧调用：保留 compile 名称，内部转发到 compileAndRun。
+    CompileResult compile(const std::string& sourceCode);
 };
 
-#endif
+
+
