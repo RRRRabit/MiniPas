@@ -33,14 +33,14 @@ struct BasicBlock
     int end = 0;
 };
 
-struct ParserTraceNode
+struct ParserTraceNode // 语法递归调用轨迹
 {
     int depth = 0;
     string rule;
     string text;
 };
 
-struct ParserLogItem
+struct ParserLogItem // 语法步骤/动作日志
 {
     string rule;
     string text;
@@ -57,7 +57,7 @@ struct TargetCodeItem
 
 struct ActivationRecordItem
 {
-    string scope;
+    string scope; // 作用域
     string name;
     int offset = 0;
     int size = 0;

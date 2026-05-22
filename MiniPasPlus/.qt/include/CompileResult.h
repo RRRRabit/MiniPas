@@ -69,6 +69,7 @@ struct VMInstruction {
 struct ParserTraceNode {
     int depth = 0;          // 调用深度，0 表示最外层 PROGRAM
     std::string rule;       // 规则名，例如 PROGRAM、STMT、EXPRESSION
+    int nodeId = 0;         // 调用树节点编号，用来和步骤/动作日志精确对应
     std::string text;       // GUI 上显示的文本
 };
 
@@ -78,6 +79,7 @@ struct ParserTraceNode {
 // text 是显示给人的说明，例如“匹配 Token: program”。
 struct ParserLogItem {
     std::string rule;
+    int nodeId = 0;
     std::string text;
 };
 

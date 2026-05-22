@@ -75,6 +75,8 @@ private:
     // 递归分析过程展示用状态。
     // traceDepth_ 表示当前 parseXXX 调用深度，只影响 GUI 调用树缩进。
     int traceDepth_;
+    int traceNodeId_;
+    std::vector<int> traceNodeStack_;
 
     // TraceScope 是一个小型 RAII 工具：
     // 构造时记录“进入某个语法子程序”，析构时自动降低深度。

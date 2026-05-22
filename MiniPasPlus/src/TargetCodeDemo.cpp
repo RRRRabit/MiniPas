@@ -5,42 +5,53 @@ using std::string;
 using std::to_string;
 using std::vector;
 
+namespace
+{
+
 // 把四元式格式化成表格里可读的文本。
 static string quadToText(const Quadruple &q)
 {
     return "(" + q.op + ", " + q.arg1 + ", " + q.arg2 + ", " + q.result + ")";
 }
 
-// 把单条四元式转换成“目标代码风格”字符串。
-static string toTargetCode(const Quadruple &q)
+static string opToTarget(const string &op)
 {
+    if (op == "+") return "ADD";
+    if (op == "-") return "SUB";
+    if (op == "*") return "MUL";
+    if (op == "/") return "DIV";
+    if (op == "<") return "LT";
+    if (op == ">") return "GT";
+    if (op == "=") return "EQ";
+    if (op == "!=") return "NE";
+    if (op == "<=") return "LE";
+    if (op == ">=") return "GE";
+    return "";
+}
+
+static string pseudoTargetCode(const Quadruple &q)
+{
+    const string targetOp = opToTarget(q.op);
+    if (!targetOp.empty())
+    {
+        return "LD R, " + q.arg1 + " ; " + targetOp + " R, " + q.arg2 + " ; ST " + q.result + ", R";
+    }
+
     if (q.op == ":=")
     {
-        return "MOV " + q.result + ", " + q.arg1;
-    }
-    if (q.op == "+")
-    {
-        return "ADD " + q.result + ", " + q.arg1 + ", " + q.arg2;
-    }
-    if (q.op == "-")
-    {
-        return "SUB " + q.result + ", " + q.arg1 + ", " + q.arg2;
-    }
-    if (q.op == "*")
-    {
-        return "MUL " + q.result + ", " + q.arg1 + ", " + q.arg2;
-    }
-    if (q.op == "/")
-    {
-        return "DIV " + q.result + ", " + q.arg1 + ", " + q.arg2;
+        return "LD R, " + q.arg1 + " ; ST " + q.result + ", R";
     }
     if (q.op == "if" || q.op == "do")
     {
-        return "FJ " + q.arg1 + ", Lfalse";
+        return "LD R, " + q.arg1 + " ; FJ R, Lfalse";
     }
     if (q.op == "el" || q.op == "we")
     {
         return "JMP Lnext";
+    }
+    if (q.op == "wh" || q.op == "ie" || q.op == "program" || q.op == "end")
+    {
+        return "MARK " + q.op;
     }
     if (q.op == "param")
     {
@@ -48,7 +59,8 @@ static string toTargetCode(const Quadruple &q)
     }
     if (q.op == "call")
     {
-        return "CALL " + q.arg1 + ", " + q.arg2;
+        return q.result == "_" ? "CALL " + q.arg1 + ", " + q.arg2
+                               : "CALL " + q.arg1 + ", " + q.arg2 + " ; MOVRET R ; ST " + q.result + ", R";
     }
     if (q.op == "ret")
     {
@@ -56,6 +68,22 @@ static string toTargetCode(const Quadruple &q)
     }
     return "MARK " + q.op;
 }
+
+static string rdlText(const Quadruple &q)
+{
+    if (!opToTarget(q.op).empty() || q.op == ":=")
+    {
+        return "R=" + q.result;
+    }
+    if (q.op == "if" || q.op == "do")
+    {
+        return "R=" + q.arg1;
+    }
+    return "0";
+}
+
+
+} // namespace
 
 // 按基本块遍历优化后四元式，生成目标代码表数据。
 vector<TargetCodeItem> TargetCodeDemo::generate(const vector<Quadruple> &quads,
@@ -65,15 +93,14 @@ vector<TargetCodeItem> TargetCodeDemo::generate(const vector<Quadruple> &quads,
 
     for (const auto &block : blocks)
     {
-        // range-for：逐个读取 basic block，更贴近“按块遍历”的语义。
         for (int i = block.start; i <= block.end && i < static_cast<int>(quads.size()); ++i)
         {
             const Quadruple &q = quads[i];
             result.push_back({"B" + to_string(block.id),
                               quadToText(q),
-                              toTargetCode(q),
-                              "RDL: 记录当前四元式需要的变量",
-                              "SEM: 根据 op 选择 MOV/ADD/JMP/CALL 等目标指令"});
+                              pseudoTargetCode(q),
+                              rdlText(q),
+                              semText(q)});
         }
     }
 

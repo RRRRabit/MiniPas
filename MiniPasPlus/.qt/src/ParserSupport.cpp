@@ -23,7 +23,9 @@ Parser::TraceScope::~TraceScope()
 
 void Parser::traceEnter(const std::string& rule)
 {
-    result_.parserTrace.push_back({traceDepth_, rule, "入口 子程序 " + rule});
+    const int nodeId = ++traceNodeId_;
+    result_.parserTrace.push_back({traceDepth_, rule, nodeId, "入口 子程序 " + rule});
+    traceNodeStack_.push_back(nodeId);
     ++traceDepth_;
 }
 
@@ -33,16 +35,24 @@ void Parser::traceExit()
     {
         --traceDepth_;
     }
+    if (!traceNodeStack_.empty())
+    {
+        traceNodeStack_.pop_back();
+    }
 }
 
 void Parser::logParserStep(const std::string& rule, const std::string& text)
 {
-    result_.parserSteps.push_back({rule, text});
+    (void)rule;
+    const int nodeId = traceNodeStack_.empty() ? 0 : traceNodeStack_.back();
+    result_.parserSteps.push_back({"", nodeId, text});
 }
 
 void Parser::logParserAction(const std::string& rule, const std::string& text)
 {
-    result_.parserActions.push_back({rule, text});
+    (void)rule;
+    const int nodeId = traceNodeStack_.empty() ? 0 : traceNodeStack_.back();
+    result_.parserActions.push_back({"", nodeId, text});
 }
 
 // 查看当前 Token，但不移动 current_。

@@ -439,6 +439,23 @@ std::string quadText(int index, const Quadruple& q)
     return std::to_string(index) + ": (" + q.op + ", " + q.arg1 + ", " + q.arg2 + ", " + q.result + ")";
 }
 
+bool isRegisterUpdateInstruction(const GeneratedInstruction& in)
+{
+    // R0 已经保存第一个操作数时，展示成二地址目标指令更直观。
+    static const std::set<std::string> ops = {"ADD", "SUB", "MUL", "DIV", "LT", "GT", "EQ", "NE", "LE", "GE"};
+    return ops.count(in.op) > 0 && in.a == "R0" && in.b == "R0" && in.c != "_";
+}
+
+std::string instructionToDisplayText(const GeneratedInstruction& in, const std::string& showB)
+{
+    if (isRegisterUpdateInstruction(in))
+    {
+        return in.op + " " + in.a + ", " + in.c;
+    }
+
+    return in.op + " " + in.a + ", " + showB + ", " + in.c;
+}
+
 std::string instTextRange(const std::vector<GeneratedInstruction>& generatedInstructions, int begin, int end)
 {
     if (begin >= static_cast<int>(generatedInstructions.size()))
@@ -461,7 +478,7 @@ std::string instTextRange(const std::vector<GeneratedInstruction>& generatedInst
         {
             showB = "L" + std::to_string(in.target);
         }
-        text += in.op + " " + in.a + ", " + showB + ", " + in.c;
+        text += instructionToDisplayText(in, showB);
     }
 
     return text;
@@ -537,7 +554,7 @@ void finalizeOutputCodes(BackendGenerationResult& out, const std::vector<Generat
             showB = "L" + std::to_string(in.target);
         }
 
-        out.codes.push_back(in.op + " " + in.a + ", " + showB + ", " + in.c);
+        out.codes.push_back(instructionToDisplayText(in, showB));
         out.instructions.push_back({in.op, in.a, showB, in.c});
     }
 

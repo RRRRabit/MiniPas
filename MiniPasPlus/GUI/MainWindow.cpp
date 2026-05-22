@@ -25,6 +25,7 @@
 #include <QVBoxLayout>
 #include <QSizePolicy>
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <set>
 #include <utility>
@@ -194,99 +195,108 @@ void MainWindow::buildUi() {
 
     const std::vector<std::pair<QString, QString>> examples = {
         {
-            "1) if/while 嵌套",
-            "PROGRAM demoifwhile\n"
-            "VAR x, y: INTEGER;\n"
+            "1) 基础运算 + if/while",
+            "PROGRAM demobasic\n"
+            "VAR x, y, sum: INTEGER;\n"
             "BEGIN\n"
-            "    x := 0;\n"
-            "    y := 5;\n"
-            "    WHILE x < y DO\n"
+            "    x := 1 + 2 * 3;\n"
+            "    y := 0;\n"
+            "    sum := 0;\n"
+            "    WHILE y < x DO\n"
             "    BEGIN\n"
-            "        IF x = 2 THEN\n"
-            "            y := y - 1\n"
+            "        IF y < 3 THEN\n"
+            "            sum := sum + y\n"
             "        ELSE\n"
-            "            y := y + 0;\n"
-            "        x := x + 1\n"
+            "            sum := sum + 1;\n"
+            "        y := y + 1\n"
             "    END\n"
             "END."
         },
         {
-            "2) 数组读写（简单数组）",
+            "2) 数组读写 + 循环求和",
             "PROGRAM demoarray\n"
             "TYPE arr = ARRAY[1..5] OF INTEGER;\n"
             "VAR a: arr;\n"
-            "    i, x: INTEGER;\n"
+            "    i, total: INTEGER;\n"
             "BEGIN\n"
-            "    i := 2;\n"
-            "    a[i] := 10;\n"
-            "    x := a[i] + 3;\n"
-            "    a[1] := x + 0\n"
+            "    i := 1;\n"
+            "    total := 0;\n"
+            "    WHILE i < 6 DO\n"
+            "    BEGIN\n"
+            "        a[i] := i * 2;\n"
+            "        total := total + a[i];\n"
+            "        i := i + 1\n"
+            "    END\n"
             "END."
         },
         {
-            "3) record 字段访问",
+            "3) record 字段 + 实数运算",
             "PROGRAM demorecord\n"
-            "TYPE rec = RECORD\n"
-            "    a: INTEGER;\n"
-            "    b: REAL;\n"
+            "TYPE student = RECORD\n"
+            "    id: INTEGER;\n"
+            "    score: REAL;\n"
             "END;\n"
-            "VAR x: rec;\n"
-            "    y: REAL;\n"
+            "VAR s: student;\n"
+            "    bonus, finalScore: REAL;\n"
             "BEGIN\n"
-            "    x.a := 3;\n"
-            "    x.b := 2.5;\n"
-            "    y := x.b + x.a\n"
+            "    s.id := 1001;\n"
+            "    s.score := 87.5;\n"
+            "    bonus := 2;\n"
+            "    finalScore := s.score + bonus\n"
             "END."
         },
         {
-            "4) 局部优化演示（常量折叠/传播）",
-            "PROGRAM demoopt\n"
-            "VAR x, y, z: INTEGER;\n"
-            "BEGIN\n"
-            "    x := 1 + 2;\n"
-            "    y := x + 0;\n"
-            "    z := (1 + 2) * (1 + 2)\n"
-            "END."
-        },
-        {
-            "5) 函数声明 + 主程序",
-            "PROGRAM demofunction\n"
+            "4) 函数 + 局部变量 + 调用",
+            "PROGRAM demofunc\n"
             "FUNCTION add(a: INTEGER; b: INTEGER): INTEGER;\n"
             "VAR t: INTEGER;\n"
             "BEGIN\n"
             "    t := a + b;\n"
             "    add := t\n"
             "END;\n"
+            "FUNCTION square(n: INTEGER): INTEGER;\n"
+            "BEGIN\n"
+            "    square := n * n\n"
+            "END;\n"
             "VAR x, y, z: INTEGER;\n"
             "BEGIN\n"
             "    x := 3;\n"
-            "    y := 4;\n"
-            "    z := add(x, y)\n"
+            "    y := add(x, 4);\n"
+            "    z := square(y)\n"
             "END."
         },
         {
-            "6) 综合（record + array + 控制流）",
-            "PROGRAM demomix\n"
-            "TYPE rec = RECORD\n"
-            "    a: INTEGER;\n"
+            "5) 综合展示（类型/函数/优化）",
+            "PROGRAM demofull\n"
+            "TYPE item = RECORD\n"
+            "    value: INTEGER;\n"
+            "    rate: REAL;\n"
             "END;\n"
-            "arr = ARRAY[1..4] OF INTEGER;\n"
-            "VAR r: rec;\n"
-            "    a: arr;\n"
-            "    i, s: INTEGER;\n"
+            "nums = ARRAY[1..4] OF INTEGER;\n"
+            "FUNCTION inc(v: INTEGER): INTEGER;\n"
+            "VAR t: INTEGER;\n"
+            "BEGIN\n"
+            "    t := v + 1;\n"
+            "    inc := t\n"
+            "END;\n"
+            "VAR data: nums;\n"
+            "    one: item;\n"
+            "    i, total, repeated: INTEGER;\n"
             "BEGIN\n"
             "    i := 1;\n"
-            "    s := 0;\n"
-            "    WHILE i < 4 DO\n"
+            "    total := 0;\n"
+            "    WHILE i < 5 DO\n"
             "    BEGIN\n"
-            "        a[i] := i * 2;\n"
-            "        IF a[i] > 2 THEN\n"
-            "            s := s + a[i]\n"
+            "        data[i] := inc(i) * 2;\n"
+            "        IF data[i] > 4 THEN\n"
+            "            total := total + data[i]\n"
             "        ELSE\n"
-            "            s := s + 0;\n"
+            "            total := total + 0;\n"
             "        i := i + 1\n"
             "    END;\n"
-            "    r.a := s\n"
+            "    repeated := (1 + 2) * (1 + 2);\n"
+            "    one.value := total + repeated;\n"
+            "    one.rate := 1.5\n"
             "END."
         }
     };
@@ -440,16 +450,25 @@ void MainWindow::buildUi() {
         connect(parserTraceTreeWidget_, &QTreeWidget::itemSelectionChanged, this, [this]() {
             auto items = parserTraceTreeWidget_->selectedItems();
             if (items.isEmpty()) {
-                highlightParserRowsByRule("");
+                highlightParserRowsByNodes({});
                 return;
             }
-            QString text = items.first()->text(0).trimmed();
-            if (text.startsWith("入口 子程序 ")) {
-                text = text.mid(QString("入口 子程序 ").size());
-            } else if (text.startsWith("出口 子程序 ")) {
-                text = text.mid(QString("出口 子程序 ").size());
-            }
-            highlightParserRowsByRule(text.trimmed());
+
+            QSet<int> nodeIds;
+            std::function<void(QTreeWidgetItem*)> collectNodeIds = [&](QTreeWidgetItem* item) {
+                if (item == nullptr) {
+                    return;
+                }
+                int nodeId = item->data(0, Qt::UserRole).toInt();
+                if (nodeId > 0) {
+                    nodeIds.insert(nodeId);
+                }
+                for (int i = 0; i < item->childCount(); ++i) {
+                    collectNodeIds(item->child(i));
+                }
+            };
+            collectNodeIds(items.first());
+            highlightParserRowsByNodes(nodeIds);
         });
     }
 
@@ -567,19 +586,19 @@ QWidget* MainWindow::createSymbolSystemPage() {
     symbolTabWidget_ = new QTabWidget(page);
 
     synblTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(synblTable_, {"序号", "NAME", "TYPEL", "CAT", "INFO"});
+    setupTable(synblTable_, {"NAME", "TYPEL", "CAT", "INFO"});
     symbolTabWidget_->addTab(createTablePage("SYNBL 总表：保存标识符及其语义信息", synblTable_), "SYNBL总表");
 
     typelTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(typelTable_, {"序号", "TYPE", "KIND", "POINT/INFO"});
+    setupTable(typelTable_, {"TYPE", "KIND", "POINT/INFO"});
     symbolTabWidget_->addTab(createTablePage("TYPEL 类型表：保存基本类型和 record 类型入口", typelTable_), "TYPEL类型表");
 
     rinflTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(rinflTable_, {"序号", "RecordName", "ID", "OFF", "TYPE", "SIZE"});
+    setupTable(rinflTable_, {"RecordName", "ID", "OFF", "TYPE", "SIZE"});
     symbolTabWidget_->addTab(createTablePage("RINFL 结构表：保存 record 字段名、字段偏移和字段类型", rinflTable_), "RINFL结构表");
 
     ainflTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(ainflTable_, {"序号", "ArrayName", "LOW", "UP", "CTP", "CLEN"});
+    setupTable(ainflTable_, {"ArrayName", "LOW", "UP", "CTP", "CLEN"});
     symbolTabWidget_->addTab(createTablePage("AINFL 数组表：保存数组上下界、成分类型和成分长度", ainflTable_), "AINFL数组表");
 
     {
@@ -596,11 +615,11 @@ QWidget* MainWindow::createSymbolSystemPage() {
     }
 
     conslTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(conslTable_, {"序号", "Text", "Type", "Value"});
+    setupTable(conslTable_, {"Text", "Type", "Value"});
     symbolTabWidget_->addTab(createTablePage("CONSL 常量表：保存常量初值", conslTable_), "CONSL常量表");
 
     lenlTable_ = new QTableWidget(symbolTabWidget_);
-    setupTable(lenlTable_, {"序号", "TYPE", "LEN"});
+    setupTable(lenlTable_, {"TYPE", "LEN"});
     symbolTabWidget_->addTab(createTablePage("LENL 长度表：保存各类型占用的字节数", lenlTable_), "LENL长度表");
 
     vallTable_ = new QTableWidget(symbolTabWidget_);
@@ -675,6 +694,9 @@ void MainWindow::compileAndRun() {
         if (reason.isEmpty()) {
             reason = "未知错误";
         }
+
+        QRegularExpression duplicatedPositionRe("^line\\s+\\d+\\s*,\\s*column\\s+\\d+\\s*:\\s*");
+        reason.remove(duplicatedPositionRe);
 
         if (reason.contains("优先关系未定义")) {
             reason = "表达式语法不完整：相邻记号之间缺少合法运算关系。";
@@ -827,11 +849,10 @@ void MainWindow::fillSynblTable(const CompileResult& result) {
     synblTable_->setRowCount(static_cast<int>(result.symbols.size()));
     for (int row = 0; row < static_cast<int>(result.symbols.size()); ++row) {
         const Symbol& symbol = result.symbols[row];
-        synblTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-        synblTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(symbol.name)));
-        synblTable_->setItem(row, 2, new QTableWidgetItem(synblTypeRef(symbol)));
+        synblTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(symbol.name)));
+        synblTable_->setItem(row, 1, new QTableWidgetItem(synblTypeRef(symbol)));
         QString cat = synblCategory(symbol);
-        synblTable_->setItem(row, 3, new QTableWidgetItem(cat));
+        synblTable_->setItem(row, 2, new QTableWidgetItem(cat));
 
         QString info = "_";
         if (cat == "vn" || cat == "vt" || cat == "v" || cat == "tv") {
@@ -841,7 +862,7 @@ void MainWindow::fillSynblTable(const CompileResult& result) {
         } else if (cat == "f" || cat == "p") {
             info = "PFINFL";
         }
-        synblTable_->setItem(row, 4, new QTableWidgetItem(info));
+        synblTable_->setItem(row, 3, new QTableWidgetItem(info));
     }
 }
 
@@ -849,28 +870,22 @@ void MainWindow::fillTypelTable(const CompileResult& result) {
     typelTable_->setRowCount(1 + static_cast<int>(result.recordTypes.size()) + static_cast<int>(result.arrayTypes.size()));
 
     int row = 0;
-    typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-    typelTable_->setItem(row, 1, new QTableWidgetItem("ircb"));
-    typelTable_->setItem(row, 2, new QTableWidgetItem("basic"));
-    typelTable_->setItem(row, 3, new QTableWidgetItem(""));
+    typelTable_->setItem(row, 0, new QTableWidgetItem("ircb"));
+    typelTable_->setItem(row, 1, new QTableWidgetItem("basic"));
+    typelTable_->setItem(row, 2, new QTableWidgetItem(""));
     ++row;
 
-    int rinflStart = 0;
     for (const auto& record : result.recordTypes) {
-        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-        typelTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
-        typelTable_->setItem(row, 2, new QTableWidgetItem("record"));
-        typelTable_->setItem(row, 3, new QTableWidgetItem(QString("RINFL+%1").arg(rinflStart)));
-        rinflStart += static_cast<int>(record.fields.size());
+        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(record.name)));
+        typelTable_->setItem(row, 1, new QTableWidgetItem("record"));
+        typelTable_->setItem(row, 2, new QTableWidgetItem("RINFL"));
         ++row;
     }
 
-    for (int i = 0; i < static_cast<int>(result.arrayTypes.size()); ++i) {
-        const auto& array = result.arrayTypes[i];
-        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-        typelTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
-        typelTable_->setItem(row, 2, new QTableWidgetItem("array"));
-        typelTable_->setItem(row, 3, new QTableWidgetItem(QString("AINFL+%1").arg(i)));
+    for (const auto& array : result.arrayTypes) {
+        typelTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(array.name)));
+        typelTable_->setItem(row, 1, new QTableWidgetItem("array"));
+        typelTable_->setItem(row, 2, new QTableWidgetItem("AINFL"));
         ++row;
     }
 }
@@ -885,12 +900,11 @@ void MainWindow::fillRinflTable(const CompileResult& result) {
     int row = 0;
     for (const auto& record : result.recordTypes) {
         for (const auto& field : record.fields) {
-            rinflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-            rinflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
-            rinflTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(field.name)));
-            rinflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(field.offset)));
-            rinflTable_->setItem(row, 4, new QTableWidgetItem(typeRef(field.type)));
-            rinflTable_->setItem(row, 5, new QTableWidgetItem(QString::number(field.size)));
+            rinflTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(record.name)));
+            rinflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(field.name)));
+            rinflTable_->setItem(row, 2, new QTableWidgetItem(QString::number(field.offset)));
+            rinflTable_->setItem(row, 3, new QTableWidgetItem(typeRef(field.type)));
+            rinflTable_->setItem(row, 4, new QTableWidgetItem(QString::number(field.size)));
             ++row;
         }
     }
@@ -900,12 +914,11 @@ void MainWindow::fillAinflTable(const CompileResult& result) {
     ainflTable_->setRowCount(static_cast<int>(result.arrayTypes.size()));
     for (int row = 0; row < static_cast<int>(result.arrayTypes.size()); ++row) {
         const auto& array = result.arrayTypes[row];
-        ainflTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-        ainflTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
-        ainflTable_->setItem(row, 2, new QTableWidgetItem(QString::number(array.low)));
-        ainflTable_->setItem(row, 3, new QTableWidgetItem(QString::number(array.high)));
-        ainflTable_->setItem(row, 4, new QTableWidgetItem(QString::fromStdString(array.elementType)));
-        ainflTable_->setItem(row, 5, new QTableWidgetItem(QString::number(array.elementSize)));
+        ainflTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(array.name)));
+        ainflTable_->setItem(row, 1, new QTableWidgetItem(QString::number(array.low)));
+        ainflTable_->setItem(row, 2, new QTableWidgetItem(QString::number(array.high)));
+        ainflTable_->setItem(row, 3, new QTableWidgetItem(QString::fromStdString(array.elementType)));
+        ainflTable_->setItem(row, 4, new QTableWidgetItem(QString::number(array.elementSize)));
     }
 }
 
@@ -936,12 +949,12 @@ void MainWindow::fillPfinflTable(const CompileResult& result) {
         funcTable->setItem(0, 1, new QTableWidgetItem(QString::number(function.offset)));
         funcTable->setItem(0, 2, new QTableWidgetItem(QString::number(function.paramCount)));
         funcTable->setItem(0, 3, new QTableWidgetItem(QString::number(function.entryQuad)));
-        funcTable->setItem(0, 4, new QTableWidgetItem(QString("PARAM+%1").arg(function.paramStart)));
+        funcTable->setItem(0, 4, new QTableWidgetItem("PARAM"));
         connectTableHighlight(funcTable);
         pfinflLayout_->addWidget(funcTable);
 
         auto* paramTable = new QTableWidget(pfinflContainer_);
-        setupTable(paramTable, {"序号", "NAME", "TYPEL", "CAT", "INFO"});
+        setupTable(paramTable, {"NAME", "TYPEL", "CAT", "INFO"});
         paramTable->setRowCount(function.paramCount);
         for (int i = 0; i < function.paramCount; ++i) {
             const auto& param = result.parameterTable[function.paramStart + i];
@@ -952,11 +965,10 @@ void MainWindow::fillPfinflTable(const CompileResult& result) {
             pseudo.address = param.offset;
             pseudo.size = param.size;
 
-            paramTable->setItem(i, 0, new QTableWidgetItem(QString::number(i + 1)));
-            paramTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(param.name)));
-            paramTable->setItem(i, 2, new QTableWidgetItem(synblTypeRef(pseudo)));
-            paramTable->setItem(i, 3, new QTableWidgetItem(synblCategory(pseudo)));
-            paramTable->setItem(i, 4, new QTableWidgetItem(QString("(%1,%2)").arg(2).arg(param.offset)));
+            paramTable->setItem(i, 0, new QTableWidgetItem(QString::fromStdString(param.name)));
+            paramTable->setItem(i, 1, new QTableWidgetItem(synblTypeRef(pseudo)));
+            paramTable->setItem(i, 2, new QTableWidgetItem(synblCategory(pseudo)));
+            paramTable->setItem(i, 3, new QTableWidgetItem(QString("(%1,%2)").arg(2).arg(param.offset)));
         }
         connectTableHighlight(paramTable);
         pfinflLayout_->addWidget(paramTable);
@@ -976,10 +988,9 @@ void MainWindow::fillConslTable(const CompileResult& result) {
     conslTable_->setRowCount(static_cast<int>(result.constantEntries.size()));
     for (int row = 0; row < static_cast<int>(result.constantEntries.size()); ++row) {
         const auto& entry = result.constantEntries[row];
-        conslTable_->setItem(row, 0, new QTableWidgetItem(QString::number(entry.index)));
-        conslTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(entry.text)));
-        conslTable_->setItem(row, 2, new QTableWidgetItem(QString::fromStdString(entry.type)));
-        conslTable_->setItem(row, 3, new QTableWidgetItem(QString::number(entry.numberValue, 'g', 12)));
+        conslTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(entry.text)));
+        conslTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(entry.type)));
+        conslTable_->setItem(row, 2, new QTableWidgetItem(QString::number(entry.numberValue, 'g', 12)));
     }
 }
 
@@ -995,22 +1006,19 @@ void MainWindow::fillLenlTable(const CompileResult& result) {
 
     int row = 0;
     for (; row < 4; ++row) {
-        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-        lenlTable_->setItem(row, 1, new QTableWidgetItem(basicTypes[row][0]));
-        lenlTable_->setItem(row, 2, new QTableWidgetItem(basicTypes[row][1]));
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(basicTypes[row][0]));
+        lenlTable_->setItem(row, 1, new QTableWidgetItem(basicTypes[row][1]));
     }
 
     for (const auto& record : result.recordTypes) {
-        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-        lenlTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(record.name)));
-        lenlTable_->setItem(row, 2, new QTableWidgetItem(QString::number(record.totalSize)));
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(record.name)));
+        lenlTable_->setItem(row, 1, new QTableWidgetItem(QString::number(record.totalSize)));
         ++row;
     }
 
     for (const auto& array : result.arrayTypes) {
-        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
-        lenlTable_->setItem(row, 1, new QTableWidgetItem(QString::fromStdString(array.name)));
-        lenlTable_->setItem(row, 2, new QTableWidgetItem(QString::number(array.totalSize)));
+        lenlTable_->setItem(row, 0, new QTableWidgetItem(QString::fromStdString(array.name)));
+        lenlTable_->setItem(row, 1, new QTableWidgetItem(QString::number(array.totalSize)));
         ++row;
     }
 }
@@ -1316,7 +1324,8 @@ void MainWindow::fillParserTraceView(const CompileResult& result) {
         std::vector<QTreeWidgetItem*> stack;
         for (const auto& node : result.parserTrace) {
             auto* item = new QTreeWidgetItem(QStringList(QString::fromStdString(node.text)));
-            item->setData(0, Qt::UserRole, QString::fromStdString(node.rule));
+            item->setData(0, Qt::UserRole, node.nodeId);
+            item->setData(0, Qt::UserRole + 1, QString::fromStdString(node.rule));
 
             const int depth = std::max(0, node.depth);
             if (depth == 0 || stack.empty()) {
@@ -1340,7 +1349,8 @@ void MainWindow::fillParserTraceView(const CompileResult& result) {
         for (int row = 0; row < static_cast<int>(result.parserSteps.size()); ++row) {
             const ParserLogItem& step = result.parserSteps[row];
             auto* item = new QTableWidgetItem(QString::fromStdString(step.text));
-            item->setData(Qt::UserRole, QString::fromStdString(step.rule));
+            item->setData(Qt::UserRole, step.nodeId);
+            item->setData(Qt::UserRole + 1, QString::fromStdString(step.rule));
             parserStepTable_->setItem(row, 0, item);
         }
     }
@@ -1350,16 +1360,20 @@ void MainWindow::fillParserTraceView(const CompileResult& result) {
         for (int row = 0; row < static_cast<int>(result.parserActions.size()); ++row) {
             const ParserLogItem& action = result.parserActions[row];
             auto* item = new QTableWidgetItem(QString::fromStdString(action.text));
-            item->setData(Qt::UserRole, QString::fromStdString(action.rule));
+            item->setData(Qt::UserRole, action.nodeId);
+            item->setData(Qt::UserRole + 1, QString::fromStdString(action.rule));
             parserActionTable_->setItem(row, 0, item);
         }
     }
 
-    highlightParserRowsByRule("");
+    highlightParserRowsByNodes({});
 }
 
-void MainWindow::highlightParserRowsByRule(const QString& ruleName) {
+void MainWindow::highlightParserRowsByNodes(const QSet<int>& nodeIds) {
     QString firstMatchedStepText;
+    QTableWidgetItem* firstStepItem = nullptr;
+    QTableWidgetItem* firstActionItem = nullptr;
+
     auto paintTable = [&](QTableWidget* table) {
         if (table == nullptr) {
             return;
@@ -1369,11 +1383,14 @@ void MainWindow::highlightParserRowsByRule(const QString& ruleName) {
             if (item == nullptr) {
                 continue;
             }
-            QString itemRule = item->data(Qt::UserRole).toString().trimmed();
-            bool hit = !ruleName.isEmpty() && itemRule == ruleName;
+            bool hit = nodeIds.contains(item->data(Qt::UserRole).toInt());
             item->setBackground(hit ? QColor(255, 248, 220) : QColor(Qt::white));
             if (hit && table == parserStepTable_ && firstMatchedStepText.isEmpty()) {
                 firstMatchedStepText = item->text();
+                firstStepItem = item;
+            }
+            if (hit && table == parserActionTable_ && firstActionItem == nullptr) {
+                firstActionItem = item;
             }
         }
     };
@@ -1381,7 +1398,22 @@ void MainWindow::highlightParserRowsByRule(const QString& ruleName) {
     paintTable(parserStepTable_);
     paintTable(parserActionTable_);
 
-    if (ruleName.isEmpty()) {
+    if (firstStepItem != nullptr) {
+        parserStepTable_->scrollToItem(firstStepItem, QAbstractItemView::PositionAtCenter);
+        parserStepTable_->setCurrentItem(firstStepItem);
+    } else if (parserStepTable_ != nullptr) {
+        parserStepTable_->clearSelection();
+        parserStepTable_->setCurrentItem(nullptr);
+    }
+    if (firstActionItem != nullptr) {
+        parserActionTable_->scrollToItem(firstActionItem, QAbstractItemView::PositionAtCenter);
+        parserActionTable_->setCurrentItem(firstActionItem);
+    } else if (parserActionTable_ != nullptr) {
+        parserActionTable_->clearSelection();
+        parserActionTable_->setCurrentItem(nullptr);
+    }
+
+    if (nodeIds.isEmpty()) {
         return;
     }
 
@@ -1489,34 +1521,9 @@ int MainWindow::symbolLevel(const Symbol& symbol) const {
 }
 
 QString MainWindow::lenlPointer(const std::string& typeName, const CompileResult& result) const {
-    int idx = -1;
-    if (typeName == "integer") {
-        idx = 0;
-    } else if (typeName == "real") {
-        idx = 1;
-    } else if (typeName == "char") {
-        idx = 2;
-    } else if (typeName == "boolean") {
-        idx = 3;
-    } else {
-        int base = 4;
-        for (int i = 0; i < static_cast<int>(result.recordTypes.size()); ++i) {
-            if (result.recordTypes[i].name == typeName) {
-                idx = base + i;
-                break;
-            }
-        }
-        if (idx == -1) {
-            base += static_cast<int>(result.recordTypes.size());
-            for (int i = 0; i < static_cast<int>(result.arrayTypes.size()); ++i) {
-                if (result.arrayTypes[i].name == typeName) {
-                    idx = base + i;
-                    break;
-                }
-            }
-        }
-    }
-    return idx >= 0 ? QString("LENL+%1").arg(idx) : "LENL";
+    (void)typeName;
+    (void)result;
+    return "LENL";
 }
 
 int MainWindow::positionFromLineColumn(int line, int column) const {

@@ -14,7 +14,8 @@ nextAddress_(0),
 currentParamOffset_(0),
 currentLocalOffset_(0),
 currentFunctionTempSize_(0),
-traceDepth_(0)
+traceDepth_(0),
+traceNodeId_(0)
 {}
 
 // Parser 总入口。
@@ -45,6 +46,8 @@ CompileResult Parser::parse()
     functionInfos_.clear();
     parameterInfos_.clear();
     traceDepth_ = 0;
+    traceNodeId_ = 0;
+    traceNodeStack_.clear();
 
     // 从文法开始符号 PROGRAM 开始分析。
     parseProgram();

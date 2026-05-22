@@ -12,6 +12,7 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QTreeWidget>
+#include <QSet>
 
 // Qt Widgets 主窗口。
 //
@@ -105,7 +106,7 @@ private:
     void fillParserTraceView(const CompileResult& result);
 
     // 点击语法分析步骤时，高亮相关行，方便演示。
-    void highlightParserRowsByRule(const QString& ruleName);
+    void highlightParserRowsByNodes(const QSet<int>& nodeIds);
 
     // 状态栏显示成功/错误信息。
     void setStatusSuccess(const QString& message);
