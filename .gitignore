@@ -1,0 +1,33 @@
+# Build outputs
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+*.ninja
+
+# Qt Creator / IDE generated files
+.qtcreator/
+*.user
+*.user.*
+.qtc_clangd/
+
+# Compiled binaries and objects
+*.exe
+*.dll
+*.a
+*.lib
+*.o
+*.obj
+*.pdb
+
+# Temporary extracted Office document contents
+_ppt_extract/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.tmp
+*.log
