@@ -26,6 +26,9 @@ Makefile
 # Temporary extracted Office document contents
 _ppt_extract/
 
+# Local submission/checkoff form
+参考文件/编译原理课程设计验收表.docx
+
 # OS/editor noise
 .DS_Store
 Thumbs.db
