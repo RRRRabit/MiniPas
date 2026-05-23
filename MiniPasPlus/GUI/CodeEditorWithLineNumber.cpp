@@ -30,11 +30,17 @@ CodeEditorWithLineNumber::CodeEditorWithLineNumber(QWidget* parent)
     // 文本行数变化时，行号区域宽度可能变化。
     connect(this, &QPlainTextEdit::blockCountChanged, this, [this]() {
         updateLineNumberAreaWidth();
+        lineNumberArea_->update();
     });
 
     // 编辑器滚动或局部重绘时，同步刷新行号区域。
     connect(this, &QPlainTextEdit::updateRequest, this, [this](const QRect& rect, int dy) {
         updateLineNumberArea(rect, dy);
+    });
+
+    // 插入空行时 block 高度会立即变化，整块刷新可以避免行号短暂留白。
+    connect(this, &QPlainTextEdit::textChanged, this, [this]() {
+        lineNumberArea_->update();
     });
 
     updateLineNumberAreaWidth();
@@ -121,6 +127,14 @@ void CodeEditorWithLineNumber::paintEvent(QPaintEvent* event) {
 void CodeEditorWithLineNumber::updateLineNumberAreaWidth() {
     // 设置左边距，让正文从行号右侧开始显示。
     setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+
+    const QRect contentRect = contentsRect();
+    lineNumberArea_->setGeometry(
+        QRect(contentRect.left(),
+              contentRect.top(),
+              lineNumberAreaWidth(),
+              contentRect.height())
+    );
 }
 
 void CodeEditorWithLineNumber::updateLineNumberArea(const QRect& rect, int dy) {

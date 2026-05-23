@@ -11,19 +11,9 @@ int main()
 {
     string source =
         "program demo\n"
-        "type person = record age: integer; end;\n"
-        "nums = array[1..5] of integer;\n"
-        "function add(a, b: integer): integer;\n"
-        "var t: integer;\n"
-        "begin\n"
-        "  t := a + b\n"
-        "end;\n"
-        "var x, y: integer; p: person; arr: nums;\n"
+        "var x, y: integer; \n"
         "begin\n"
         "  x := 1 + 2 * 3;\n"
-        "  arr[1] := x;\n"
-        "  p.age := arr[1];\n"
-        "  if x > 3 then y := add(x, 1) else y := 0;\n"
         "  while y > 0 do y := y - 1\n"
         "end.";
 

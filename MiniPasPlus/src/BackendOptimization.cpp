@@ -21,7 +21,57 @@ vector<Quadruple> BackendOptimization::optimizeByBasicBlocks(
         // alias 表示“谁可以替换成谁”。
         map<string, string> alias;
 
-        // exprValue 记录已经算过的表达式。
+        //// 解析复合语句块 begin ... end。
+void Parser::parseCompoundStmt()
+{
+    consume(TokenType::Keyword, "begin", "复合语句缺少 begin");
+    parseStmtList();
+    consume(TokenType::Keyword, "end", "复合语句缺少 end");
+}
+
+// 解析语句序列（分号分隔）。
+void Parser::parseStmtList()
+{
+    if (check(TokenType::Keyword, "end"))
+    {
+        return;
+    }
+    parseStmt();
+    while (match(TokenType::Delimiter, ";"))
+    {
+        if (check(TokenType::Keyword, "end") || check(TokenType::Keyword, "else"))
+        {
+            break;
+        }
+        parseStmt();
+    }
+}
+
+// 语句分发器：按首 Token 决定进入哪类语句解析。
+void Parser::parseStmt()
+{
+    if (check(TokenType::Keyword, "begin"))
+    {
+        parseCompoundStmt();
+        return;
+    }
+    if (check(TokenType::Keyword, "if"))
+    {
+        parseIfStmt();
+        return;
+    }
+    if (check(TokenType::Keyword, "while"))
+    {
+        parseWhileStmt();
+        return;
+    }
+    if (check(TokenType::Identifier) && tokens_[current_ + 1].lexeme == "(")
+    {
+        parseCallStmt();
+        return;
+    }
+    parseAssignStmt();
+} 记录已经算过的表达式。
         map<string, string> exprValue;
 
         for (int i = block.start; i <= block.end && i < static_cast<int>(quads.size()); ++i)
